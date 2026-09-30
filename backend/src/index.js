@@ -190,7 +190,20 @@ app.get('/api/v1/public/events', async (req, res) => {
 });
 
 app.post('/api/v1/public/events', async (req, res) => {
-  const { title, summary, description, countyId, locationText, eventDate, startTime, endTime, price, capacity, status = 'pending_approval' } = req.body;
+  const {
+    title,
+    summary,
+    description,
+    countyId,
+    locationText,
+    eventDate,
+    startTime,
+    endTime,
+    price,
+    capacity,
+    status = 'pending_approval',
+    images = [],
+  } = req.body;
 
   if (!title || !description || !eventDate || !startTime || !capacity) {
     return res.status(400).json({ success: false, message: 'Missing required hike fields.' });
@@ -258,6 +271,17 @@ app.post('/api/v1/public/events', async (req, res) => {
         bookedSlots: Number(row.booked_slots || 0),
         availableSlots: Number(row.available_slots || 0),
       };
+
+      const eventImages = Array.isArray(images) ? images.filter(Boolean) : [];
+      if (eventImages.length > 0) {
+        const imagePlaceholders = eventImages
+          .map((_, index) => `($${index * 5 + 1}, $${index * 5 + 2}, $${index * 5 + 3}, $${index * 5 + 4}, $${index * 5 + 5})`)
+          .join(', ');
+
+        const imageParams = eventImages.flatMap((image, index) => [row.id, image, null, index === 0, index]);
+        await query(`INSERT INTO event_images (event_id, image_url, caption, is_cover, display_order) VALUES ${imagePlaceholders}`, imageParams);
+      }
+
       events.push(saved);
       return res.status(201).json({ success: true, data: saved });
     }

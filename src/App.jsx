@@ -854,8 +854,9 @@ function App() {
       status: 'pending_approval',
     }
 
+    let storedEvent = { ...newHike }
     try {
-      await api.createEvent({
+      const createResponse = await api.createEvent({
         title,
         summary: description,
         description,
@@ -871,11 +872,16 @@ function App() {
         images: selectedPhotos,
         tiers: customTiers,
       })
+
+      const createdEvent = createResponse?.data || createResponse
+      if (createdEvent?.id) {
+        storedEvent = { ...newHike, id: createdEvent.id }
+      }
     } catch (error) {
       showToast(error.message || 'The backend could not store this hike yet. It remains in local queue until deployment is complete.')
     }
 
-    setPendingHikes((prev) => [newHike, ...prev])
+    setPendingHikes((prev) => [storedEvent, ...prev])
     if (additionalTicketsNeeded > 0) {
       setTicketRequests((prev) => [{
         id: `req-${Date.now()}`,
@@ -898,12 +904,16 @@ function App() {
     if (!approved) return
 
     try {
-      await api.reviewEvent(approved.id, { decision: 'approved', notes: 'Approved by superadmin' })
+      const reviewResponse = await api.reviewEvent(approved.id, { decision: 'approved', notes: 'Approved by superadmin' })
+      const persistedEvent = reviewResponse?.data || reviewResponse
+      if (persistedEvent?.id) {
+        approved.id = persistedEvent.id
+      }
     } catch (error) {
       // Local fallback for demo/offline mode remains available.
     }
 
-    const normalized = normalizeEvent({ ...approved, status: 'approved', organizerName: approved.organizerName || approved.organizer }, 0)
+    const normalized = normalizeEvent({ ...approved, status: 'published', organizerName: approved.organizerName || approved.organizer }, 0)
     setApprovedHikes((prev) => [normalized, ...prev])
     setHikes((prev) => sortHikes([normalized, ...prev]))
     setPendingHikes((prev) => prev.filter((_, i) => i !== index))
