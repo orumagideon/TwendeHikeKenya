@@ -95,6 +95,25 @@ const events = [];
 const bookings = [];
 const payments = [];
 
+const isUuid = (value) => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
+
+async function resolveEventOrganizerId(preferredOrganizerId = null) {
+  if (preferredOrganizerId && isUuid(preferredOrganizerId)) {
+    const existing = await query('SELECT id FROM users WHERE id = $1 LIMIT 1', [preferredOrganizerId]);
+    if (existing.rows[0]?.id) {
+      return existing.rows[0].id;
+    }
+  }
+
+  const admin = await query('SELECT id FROM users WHERE email = $1 LIMIT 1', [config.superAdminEmail]);
+  if (admin.rows[0]?.id) {
+    return admin.rows[0].id;
+  }
+
+  const fallback = await query('SELECT id FROM users ORDER BY created_at ASC LIMIT 1');
+  return fallback.rows[0]?.id || users[0].id;
+}
+
 async function ensureDefaultRoles() {
   if (!config.databaseUrl) {
     return;
@@ -450,28 +469,39 @@ app.post('/api/v1/public/events', async (req, res) => {
     images = [],
   } = req.body;
 
-  if (!title || !description || !eventDate || !startTime || !capacity) {
-    return res.status(400).json({ success: false, message: 'Missing required hike fields.' });
+  const normalizedTitle = String(title || '').trim();
+  const normalizedDescription = String(description || '').trim();
+  const normalizedSummary = String(summary || description || '').trim();
+
+  if (!normalizedTitle || !normalizedDescription) {
+    return res.status(400).json({ success: false, message: 'Title and description are required.' });
   }
+
+  const normalizedEventDate = eventDate || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+  const normalizedStartTime = startTime || '06:00:00';
+  const normalizedEndTime = endTime || '14:00:00';
+  const normalizedCapacity = Number(capacity) || 30;
+  const normalizedPrice = Number(price) || 0;
+  const normalizedCountyId = Number(countyId) || 1;
 
   const created = {
     id: uuidv4(),
-    organizerId: users[0]?.id || 'system-admin',
-    countyId: Number(countyId || 30),
-    title,
-    slug: title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-    summary: summary || '',
-    description,
+    organizerId: null,
+    countyId: normalizedCountyId,
+    title: normalizedTitle,
+    slug: normalizedTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+    summary: normalizedSummary,
+    description: normalizedDescription,
     locationText: locationText || 'Nairobi',
     latitude: null,
     longitude: null,
-    eventDate,
-    startTime,
-    endTime: endTime || null,
-    price: Number(price || 0),
-    capacity: Number(capacity),
+    eventDate: normalizedEventDate,
+    startTime: normalizedStartTime,
+    endTime: normalizedEndTime,
+    price: normalizedPrice,
+    capacity: normalizedCapacity,
     bookedSlots: 0,
-    availableSlots: Number(capacity),
+    availableSlots: normalizedCapacity,
     status,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -479,12 +509,8 @@ app.post('/api/v1/public/events', async (req, res) => {
 
   try {
     if (config.databaseUrl) {
-      const organizerId = created.organizerId || '8d8a1ef8-8e6d-4a02-a4f5-3503bc9ee42a';
-      const countyId = Number(created.countyId || 30);
-      const checkUser = await query('SELECT id FROM users WHERE id = $1 LIMIT 1', [organizerId]);
-      if (checkUser.rows.length === 0) {
-        await ensureDefaultSuperAdmin();
-      }
+      const organizerId = await resolveEventOrganizerId();
+      created.organizerId = organizerId;
 
       const insert = await query(
         `INSERT INTO events (
@@ -494,17 +520,17 @@ app.post('/api/v1/public/events', async (req, res) => {
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW()) RETURNING *`,
         [
           organizerId,
-          countyId,
-          created.title,
+          normalizedCountyId,
+          normalizedTitle,
           created.slug,
-          created.summary,
-          created.description,
+          normalizedSummary,
+          normalizedDescription,
           created.locationText,
-          created.eventDate,
-          created.startTime,
-          created.endTime,
-          created.price,
-          created.capacity,
+          normalizedEventDate,
+          normalizedStartTime,
+          normalizedEndTime,
+          normalizedPrice,
+          normalizedCapacity,
           created.bookedSlots,
           created.availableSlots,
           status,
@@ -515,6 +541,8 @@ app.post('/api/v1/public/events', async (req, res) => {
       const saved = {
         ...created,
         id: row.id,
+        organizerId: row.organizer_id,
+        countyId: Number(row.county_id || normalizedCountyId),
         eventDate: row.event_date,
         startTime: row.start_time,
         endTime: row.end_time,
@@ -541,8 +569,8 @@ app.post('/api/v1/public/events', async (req, res) => {
     events.push(created);
     return res.status(201).json({ success: true, data: created });
   } catch (error) {
-    events.push(created);
-    return res.status(201).json({ success: true, data: created, warning: error.message || 'Stored in local fallback mode.' });
+    console.error('Failed to create event', error);
+    return res.status(500).json({ success: false, message: error.message || 'Unable to create event.' });
   }
 });
 
@@ -762,35 +790,82 @@ app.get('/api/v1/organizer/dashboard', authMiddleware, requireRoles('organizer')
   });
 });
 
-app.post('/api/v1/organizer/events', authMiddleware, requireRoles('organizer'), (req, res) => {
+app.post('/api/v1/organizer/events', authMiddleware, requireRoles('organizer'), async (req, res) => {
   const { title, summary, description, countyId, locationText, eventDate, startTime, endTime, price, capacity } = req.body;
 
-  if (!title || !description || !countyId || !eventDate || !startTime || !capacity) {
-    return res.status(400).json({ success: false, message: 'Missing required hike fields.' });
+  const normalizedTitle = String(title || '').trim();
+  const normalizedDescription = String(description || '').trim();
+
+  if (!normalizedTitle || !normalizedDescription) {
+    return res.status(400).json({ success: false, message: 'Title and description are required.' });
   }
 
   const event = {
     id: uuidv4(),
     organizerId: req.user.sub,
-    countyId: Number(countyId),
-    title,
-    slug: title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-    summary: summary || '',
-    description,
+    countyId: Number(countyId) || 1,
+    title: normalizedTitle,
+    slug: normalizedTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+    summary: String(summary || description || '').trim(),
+    description: normalizedDescription,
     locationText: locationText || 'Unknown location',
-    eventDate,
-    startTime,
-    endTime: endTime || null,
-    price: Number(price || 0),
-    capacity: Number(capacity),
+    eventDate: eventDate || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+    startTime: startTime || '06:00:00',
+    endTime: endTime || '14:00:00',
+    price: Number(price) || 0,
+    capacity: Number(capacity) || 30,
     bookedSlots: 0,
-    availableSlots: Number(capacity),
+    availableSlots: Number(capacity) || 30,
     status: 'draft'
   };
 
-  events.push(event);
+  try {
+    if (config.databaseUrl) {
+      const resolvedOrganizerId = await resolveEventOrganizerId(req.user.sub);
+      const insert = await query(`
+        INSERT INTO events (
+          organizer_id, county_id, title, slug, summary, description, location_text,
+          event_date, start_time, end_time, price, capacity, booked_slots, available_slots, status,
+          created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
+        RETURNING *
+      `, [
+        resolvedOrganizerId,
+        event.countyId,
+        event.title,
+        event.slug,
+        event.summary,
+        event.description,
+        event.locationText,
+        event.eventDate,
+        event.startTime,
+        event.endTime,
+        event.price,
+        event.capacity,
+        event.bookedSlots,
+        event.availableSlots,
+        event.status,
+      ]);
 
-  return res.status(201).json({ success: true, data: event });
+      const row = insert.rows[0];
+      event.id = row.id;
+      event.organizerId = row.organizer_id;
+      event.countyId = Number(row.county_id || event.countyId);
+      event.eventDate = row.event_date;
+      event.startTime = row.start_time;
+      event.endTime = row.end_time;
+      event.price = Number(row.price || 0);
+      event.capacity = Number(row.capacity || 0);
+      event.bookedSlots = Number(row.booked_slots || 0);
+      event.availableSlots = Number(row.available_slots || 0);
+    }
+
+    events.push(event);
+    return res.status(201).json({ success: true, data: event });
+  } catch (error) {
+    console.error('Failed to create organizer event', error);
+    return res.status(500).json({ success: false, message: error.message || 'Unable to create organizer event.' });
+  }
 });
 
 app.get('/api/v1/organizer/events/:id/manifest', authMiddleware, requireRoles('organizer'), (req, res) => {
@@ -820,7 +895,17 @@ app.get('/api/v1/admin/events/pending', authMiddleware, requireRoles('super_admi
 
 app.patch('/api/v1/admin/events/:id/review', authMiddleware, requireRoles('super_admin'), async (req, res) => {
   const { decision, notes } = req.body;
-  const event = events.find((entry) => entry.id === req.params.id);
+  const eventId = String(req.params.id || '').trim();
+
+  if (!['approved', 'rejected'].includes(decision)) {
+    return res.status(400).json({ success: false, message: 'Decision must be approved or rejected.' });
+  }
+
+  if (!isUuid(eventId)) {
+    return res.status(400).json({ success: false, message: 'Invalid event ID. Approvals must use a valid database UUID.' });
+  }
+
+  const event = events.find((entry) => entry.id === eventId);
 
   if (!event) {
     if (config.databaseUrl) {
@@ -834,17 +919,18 @@ app.patch('/api/v1/admin/events/:id/review', authMiddleware, requireRoles('super
               updated_at = NOW()
           WHERE id = $4
           RETURNING *
-        `, [decision === 'approved' ? 'published' : 'archived', notes || '', users[0].id, req.params.id]);
-        return res.json({ success: true, data: result.rows[0] || null });
+        `, [decision === 'approved' ? 'published' : 'archived', notes || '', users[0].id, eventId]);
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({ success: false, message: 'Event not found for approval.' });
+        }
+
+        return res.json({ success: true, data: result.rows[0] });
       } catch (error) {
-        return res.status(404).json({ success: false, message: 'Event not found.' });
+        return res.status(500).json({ success: false, message: error.message || 'Unable to approve event.' });
       }
     }
     return res.status(404).json({ success: false, message: 'Event not found.' });
-  }
-
-  if (!['approved', 'rejected'].includes(decision)) {
-    return res.status(400).json({ success: false, message: 'Decision must be approved or rejected.' });
   }
 
   event.status = decision === 'approved' ? 'published' : 'archived';
@@ -852,7 +938,7 @@ app.patch('/api/v1/admin/events/:id/review', authMiddleware, requireRoles('super
 
   if (config.databaseUrl) {
     try {
-      await query(`
+      const result = await query(`
         UPDATE events
         SET status = $1,
             admin_notes = $2,
@@ -860,9 +946,21 @@ app.patch('/api/v1/admin/events/:id/review', authMiddleware, requireRoles('super
             approved_at = NOW(),
             updated_at = NOW()
         WHERE id = $4
+        RETURNING *
       `, [event.status, notes || '', users[0].id, event.id]);
+
+      if (result.rows[0]) {
+        Object.assign(event, {
+          ...event,
+          status: result.rows[0].status,
+          adminNotes: result.rows[0].admin_notes,
+          approvedBy: result.rows[0].approved_by,
+          approvedAt: result.rows[0].approved_at,
+        });
+      }
     } catch (error) {
-      // Fallback remains safe in memory if DB updates fail.
+      console.error('Failed to approve event in database', error);
+      return res.status(500).json({ success: false, message: error.message || 'Unable to approve event.' });
     }
   }
 

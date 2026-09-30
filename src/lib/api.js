@@ -1,4 +1,4 @@
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api/v1';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
 const TOKEN_KEY = 'twendehike_access_token';
 const USER_KEY = 'twendehike_user';

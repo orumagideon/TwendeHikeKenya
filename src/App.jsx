@@ -60,6 +60,12 @@ const readStorage = (key, fallback) => {
   }
 }
 
+const persistMarketplaceState = (nextHikes, nextApprovedHikes) => {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(STORAGE_KEYS.hikes, JSON.stringify(nextHikes))
+  window.localStorage.setItem(STORAGE_KEYS.approved, JSON.stringify(nextApprovedHikes))
+}
+
 const getEffectiveTier = (hike) => {
   const tiers = Array.isArray(hike?.tiers) ? hike.tiers : []
   if (!tiers.length) {
@@ -545,12 +551,18 @@ function App() {
           setAuthUser(storedUser)
         }
 
+        const fallbackApproved = readStorage(STORAGE_KEYS.approved, [])
+        const fallbackHikes = readStorage(STORAGE_KEYS.hikes, [])
+
         const eventsResult = await api.getPublicEvents()
         const eventList = Array.isArray(eventsResult?.data) ? eventsResult.data : []
         const normalizedRemote = eventList.map((item, index) => normalizeEvent(item, index))
+        const fallbackList = Array.isArray(fallbackApproved) && fallbackApproved.length ? fallbackApproved : fallbackHikes
+        const mergedHikes = normalizedRemote.length ? normalizedRemote : fallbackList
 
-        setHikes(normalizedRemote)
-        setApprovedHikes(normalizedRemote)
+        setHikes(mergedHikes)
+        setApprovedHikes(mergedHikes)
+        persistMarketplaceState(mergedHikes, mergedHikes)
 
         if (hikerSession) {
           setUserBookings(hikerSession.bookings || [])
@@ -566,6 +578,12 @@ function App() {
           })
         }
       } catch (error) {
+        const fallbackApproved = readStorage(STORAGE_KEYS.approved, [])
+        const fallbackHikes = readStorage(STORAGE_KEYS.hikes, [])
+        const persistedHikes = fallbackApproved.length ? fallbackApproved : fallbackHikes
+        setHikes(persistedHikes)
+        setApprovedHikes(persistedHikes)
+        persistMarketplaceState(persistedHikes, persistedHikes)
         showToast(error.message || 'Unable to load trail marketplace.')
       } finally {
         setAuthLoading(false)
@@ -854,16 +872,16 @@ function App() {
     let storedEvent = { ...newHike }
     try {
       const createResponse = await api.createEvent({
-        title,
-        summary: description,
-        description,
-        countyId: 1,
-        locationText: pickup,
-        eventDate: date,
+        title: String(title || '').trim(),
+        summary: String(description || '').trim(),
+        description: String(description || '').trim(),
+        countyId: Number(countyId) || 1,
+        locationText: pickup || 'Nairobi',
+        eventDate: date || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
         startTime: '05:30:00',
         endTime: '13:00:00',
-        price: standardPrice,
-        capacity: maxTickets,
+        price: Number(standardPrice) || 0,
+        capacity: Number(maxTickets) || 30,
         status: 'pending_approval',
         organizerName: publicHostName,
         images: selectedPhotos,
@@ -871,11 +889,14 @@ function App() {
       })
 
       const createdEvent = createResponse?.data || createResponse
-      if (createdEvent?.id) {
-        storedEvent = { ...newHike, id: createdEvent.id }
+      if (!createdEvent || !createdEvent.id) {
+        throw new Error(createResponse?.message || 'The server did not return a valid hike ID.')
       }
+
+      storedEvent = { ...newHike, ...createdEvent, id: createdEvent.id, status: 'pending_approval' }
     } catch (error) {
-      showToast(error.message || 'The backend could not store this hike yet. It remains in local queue until deployment is complete.')
+      showToast(error.message || 'Unable to save this hike to the database.')
+      return
     }
 
     setPendingHikes((prev) => [storedEvent, ...prev])
@@ -900,6 +921,12 @@ function App() {
     const approved = pendingHikes[index]
     if (!approved) return
 
+    const validEventId = typeof approved.id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(approved.id)
+    if (!validEventId) {
+      showToast('This hike has no valid database ID. Save it again before approving.')
+      return
+    }
+
     try {
       const reviewResponse = await api.reviewEvent(approved.id, { decision: 'approved', notes: 'Approved by superadmin' })
       const persistedEvent = reviewResponse?.data || reviewResponse
@@ -907,12 +934,25 @@ function App() {
         approved.id = persistedEvent.id
       }
     } catch (error) {
-      // Local fallback for demo/offline mode remains available.
+      showToast(error.message || 'Unable to approve this hike in the database.')
+      return
     }
 
     const normalized = normalizeEvent({ ...approved, status: 'published', organizerName: approved.organizerName || approved.organizer }, 0)
-    setApprovedHikes((prev) => [normalized, ...prev])
-    setHikes((prev) => sortHikes([normalized, ...prev]))
+
+    setApprovedHikes((prev) => {
+      const nextApproved = [normalized, ...prev.filter((item) => item.id !== normalized.id)]
+      persistMarketplaceState(
+        sortHikes([normalized, ...hikes.filter((item) => item.id !== normalized.id)]),
+        nextApproved,
+      )
+      return nextApproved
+    })
+    setHikes((prev) => {
+      const nextHikes = sortHikes([normalized, ...prev.filter((item) => item.id !== normalized.id)])
+      persistMarketplaceState(nextHikes, [normalized, ...approvedHikes.filter((item) => item.id !== normalized.id)])
+      return nextHikes
+    })
     setPendingHikes((prev) => prev.filter((_, i) => i !== index))
     showToast(`${approved.title} approved and published to the marketplace.`)
   }
