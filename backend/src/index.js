@@ -10,7 +10,7 @@ import { buildTicketPdf, generateTicketCode } from './services/ticketService.js'
 import { query } from './lib/db.js';
 
 const app = express();
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '10mb' }));
 app.use((req, res, next) => {
   const origin = req.headers.origin || '*';
   res.setHeader('Access-Control-Allow-Origin', origin);
@@ -272,6 +272,20 @@ async function ensureDatabaseSchema() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE (event_id, display_order)
     )`,
+    `CREATE TABLE IF NOT EXISTS event_likes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      anonymous_key VARCHAR(255),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (user_id IS NOT NULL OR anonymous_key IS NOT NULL)
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS unique_event_like_per_user
+      ON event_likes (event_id, user_id)
+      WHERE user_id IS NOT NULL`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS unique_event_like_per_anonymous_key
+      ON event_likes (event_id, anonymous_key)
+      WHERE anonymous_key IS NOT NULL`,
     `CREATE TABLE IF NOT EXISTS bookings (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       event_id UUID NOT NULL,
@@ -356,9 +370,12 @@ async function withSchemaRetry(operation) {
 
 function buildPublicEvent(event) {
   const organizer = users.find((user) => user.id === event.organizerId) || null;
+  const likesCount = Number(event.likesCount ?? event.likes_count ?? event.interestCount ?? event.interest_count ?? 0);
 
   return {
     ...event,
+    likesCount,
+    interestCount: likesCount,
     county: counties.find((county) => county.id === event.countyId) || null,
     organizer: organizer
       ? {
@@ -403,6 +420,13 @@ app.get('/api/v1/public/events', async (req, res) => {
 
     if (config.databaseUrl) {
       await withSchemaRetry(async () => {
+        const likeResult = await query(`
+          SELECT event_id, COUNT(*)::int AS likes_count
+          FROM event_likes
+          GROUP BY event_id
+        `);
+        const likeMap = new Map(likeResult.rows.map((row) => [row.event_id, Number(row.likes_count || 0)]));
+
         const result = await query(`
           SELECT e.*, c.name AS county_name
           FROM events e
@@ -412,6 +436,8 @@ app.get('/api/v1/public/events', async (req, res) => {
 
         const rows = result.rows.map((row) => ({
           ...row,
+          likesCount: Number(likeMap.get(row.id) || 0),
+          interestCount: Number(likeMap.get(row.id) || 0),
           county: row.county_name ? { id: row.county_id, name: row.county_name } : null,
           organizer: { id: row.organizer_id, firstName: 'Twende', lastName: 'Host', email: '', role: 'organizer' },
           organizerName: 'Twende Host',
@@ -452,6 +478,89 @@ app.get('/api/v1/public/events', async (req, res) => {
   }
 });
 
+
+app.post('/api/v1/public/events/:id/like', async (req, res) => {
+  const eventId = String(req.params.id || '').trim();
+  if (!isUuid(eventId)) {
+    return res.status(400).json({ success: false, message: 'Invalid event ID.' });
+  }
+
+  const authHeader = req.headers.authorization || '';
+  const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  let userId = null;
+
+  if (bearerToken) {
+    try {
+      const decoded = jwt.verify(bearerToken, config.jwtSecret);
+      userId = decoded?.sub || null;
+    } catch (_error) {
+      userId = null;
+    }
+  }
+
+  const clientKey = String(req.body?.clientKey || req.headers['x-client-id'] || req.headers['x-client-key'] || req.ip || `anon-${Date.now()}`).trim() || `anon-${Date.now()}`;
+
+  try {
+    if (config.databaseUrl) {
+      await withSchemaRetry(async () => {
+        if (userId) {
+          const existing = await query(
+            'SELECT id FROM event_likes WHERE event_id = $1 AND user_id = $2 LIMIT 1',
+            [eventId, userId],
+          );
+
+          if (existing.rows[0]) {
+            await query('DELETE FROM event_likes WHERE event_id = $1 AND user_id = $2', [eventId, userId]);
+            const count = await query('SELECT COUNT(*)::int AS likes_count FROM event_likes WHERE event_id = $1', [eventId]);
+            return res.json({ success: true, likesCount: Number(count.rows[0].likes_count || 0), hasLiked: false });
+          }
+
+          await query('INSERT INTO event_likes (event_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [eventId, userId]);
+        } else {
+          const existing = await query(
+            'SELECT id FROM event_likes WHERE event_id = $1 AND anonymous_key = $2 LIMIT 1',
+            [eventId, clientKey],
+          );
+
+          if (existing.rows[0]) {
+            await query('DELETE FROM event_likes WHERE event_id = $1 AND anonymous_key = $2', [eventId, clientKey]);
+            const count = await query('SELECT COUNT(*)::int AS likes_count FROM event_likes WHERE event_id = $1', [eventId]);
+            return res.json({ success: true, likesCount: Number(count.rows[0].likes_count || 0), hasLiked: false });
+          }
+
+          await query('INSERT INTO event_likes (event_id, anonymous_key) VALUES ($1, $2) ON CONFLICT DO NOTHING', [eventId, clientKey]);
+        }
+
+        const count = await query('SELECT COUNT(*)::int AS likes_count FROM event_likes WHERE event_id = $1', [eventId]);
+        return res.json({ success: true, likesCount: Number(count.rows[0].likes_count || 0), hasLiked: true });
+      });
+    }
+
+    const event = events.find((entry) => entry.id === eventId);
+    if (!event) {
+      return res.status(404).json({ success: false, message: 'Event not found.' });
+    }
+
+    event.interestCount = Number(event.interestCount || 0);
+    event.likesCount = Number(event.likesCount || 0);
+    const key = userId ? `user:${userId}` : `anon:${clientKey}`;
+    const hasLiked = event.likeKeys && event.likeKeys.includes(key);
+
+    if (hasLiked) {
+      event.likeKeys = (event.likeKeys || []).filter((entry) => entry !== key);
+      event.likesCount = Math.max(0, event.likesCount - 1);
+      event.interestCount = event.likesCount;
+      return res.json({ success: true, likesCount: event.likesCount, hasLiked: false });
+    }
+
+    event.likeKeys = [...new Set([...(event.likeKeys || []), key])];
+    event.likesCount = event.likesCount + 1;
+    event.interestCount = event.likesCount;
+    return res.json({ success: true, likesCount: event.likesCount, hasLiked: true });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || 'Unable to update event like.' });
+  }
+});
 
 app.post('/api/v1/public/events', async (req, res) => {
   const {
@@ -1011,6 +1120,7 @@ app.post('/api/v1/payments/stk-push', authMiddleware, async (req, res) => {
     userName: `${req.user.firstName} ${req.user.lastName}`,
     phoneNumber,
     amount: Number(amount),
+    pickupLocation: req.body?.pickupLocation || null,
     paymentReference: `THK-${Date.now()}`,
     ticketCode,
     status: 'held',
@@ -1025,7 +1135,8 @@ app.post('/api/v1/payments/stk-push', authMiddleware, async (req, res) => {
     phoneNumber,
     amount: Number(amount),
     bookingId,
-    eventTitle: event.title
+    eventTitle: event.title,
+    pickupLocation: req.body?.pickupLocation || event.locationText || null
   });
 
   const payment = {

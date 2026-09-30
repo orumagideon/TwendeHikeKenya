@@ -90,6 +90,12 @@ export const api = {
 
   getPublicEvents: () => request('/public/events'),
 
+  likeEvent: (eventId, payload = {}) =>
+    request(`/public/events/${eventId}/like`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
   initiateStkPush: (payload) =>
     request('/payments/stk-push', {
       method: 'POST',

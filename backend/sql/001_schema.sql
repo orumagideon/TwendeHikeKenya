@@ -100,6 +100,23 @@ CREATE TABLE event_images (
   UNIQUE (event_id, display_order)
 );
 
+CREATE TABLE event_likes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  anonymous_key VARCHAR(255),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (user_id IS NOT NULL OR anonymous_key IS NOT NULL)
+);
+
+CREATE UNIQUE INDEX unique_event_like_per_user
+ON event_likes (event_id, user_id)
+WHERE user_id IS NOT NULL;
+
+CREATE UNIQUE INDEX unique_event_like_per_anonymous_key
+ON event_likes (event_id, anonymous_key)
+WHERE anonymous_key IS NOT NULL;
+
 CREATE TABLE bookings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id UUID NOT NULL REFERENCES events(id) ON DELETE RESTRICT,

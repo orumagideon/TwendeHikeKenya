@@ -9,6 +9,19 @@ const DEFAULT_HIKER = {
 
 const DEFAULT_EVENT_IMAGE = 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=1200&q=80'
 
+const getClientLikeKey = () => {
+  if (typeof window === 'undefined') return 'anonymous-user'
+  try {
+    const existing = window.localStorage.getItem('twendehike_client_key')
+    if (existing) return existing
+    const generated = `anon-${Math.random().toString(36).slice(2, 12)}-${Date.now().toString(36)}`
+    window.localStorage.setItem('twendehike_client_key', generated)
+    return generated
+  } catch (error) {
+    return `anon-${Date.now().toString(36)}`
+  }
+}
+
 const fallbackImages = [
   DEFAULT_EVENT_IMAGE,
   'https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=800&q=80',
@@ -663,7 +676,7 @@ function App() {
     const selectedTier = eventModal.tiers[selectedTierIndex] || eventModal.tiers[0]
     setCheckoutForm((prev) => ({
       ...prev,
-      pickup: eventModal.pickup || eventModal.locationText || '',
+      pickup: eventModal.pickup || eventModal.locationText || 'Direct at trailhead',
       fullName: hikerProfile.fullName || prev.fullName || '',
       phoneNumber: hikerProfile.phoneNumber || prev.phoneNumber || '',
     }))
@@ -682,6 +695,7 @@ function App() {
         phoneNumber: checkoutForm.phoneNumber,
         amount: Number(checkoutHike.tier.price),
         quantity: 1,
+        pickupLocation: checkoutForm.pickup || checkoutHike.hike.pickup || 'Direct at trailhead',
       })
 
       const paymentData = paymentResult?.data || paymentResult
@@ -794,14 +808,28 @@ function App() {
 
   const handleEventImageChange = (event) => {
     const files = Array.from(event.target.files || [])
-    const imageUrls = files
-      .filter((file) => file instanceof File)
-      .map((file) => URL.createObjectURL(file))
+    const readableFiles = files.filter((file) => file instanceof File)
 
-    if (!imageUrls.length) return
+    if (!readableFiles.length) return
 
-    setUploadedEventImages((prev) => [...prev, ...imageUrls])
-    event.target.value = ''
+    Promise.all(
+      readableFiles.map(
+        (file) =>
+          new Promise((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(String(reader.result || ''))
+            reader.onerror = () => reject(new Error('Unable to read the selected image.'))
+            reader.readAsDataURL(file)
+          }),
+      ),
+    )
+      .then((imageDataUrls) => {
+        setUploadedEventImages((prev) => [...prev, ...imageDataUrls.filter(Boolean)])
+        event.target.value = ''
+      })
+      .catch(() => {
+        showToast('One or more selected images could not be processed.')
+      })
   }
 
   const addInclusion = (value) => {
@@ -1116,26 +1144,33 @@ function App() {
     setTicketModal(booking)
   }
 
-  const handleInterestClick = (hikeId) => {
-    if (likedHikes.includes(hikeId)) {
-      showToast('You have already liked this expedition.')
-      return
-    }
+  const handleInterestClick = async (hikeId) => {
+    try {
+      const response = await api.likeEvent(hikeId, { clientKey: getClientLikeKey() })
+      const result = response?.data || response
+      const hasLiked = Boolean(result?.hasLiked)
+      const likesCount = Number(result?.likesCount ?? 0)
 
-    const nextLikedHikes = [...likedHikes, hikeId]
-    setLikedHikes(nextLikedHikes)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('twendehike_liked_hikes', JSON.stringify(nextLikedHikes))
-    }
+      setLikedHikes((prev) => {
+        const next = hasLiked ? [...new Set([...prev, hikeId])] : prev.filter((item) => item !== hikeId)
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('twendehike_liked_hikes', JSON.stringify(next))
+        }
+        return next
+      })
 
-    setHikes((prev) =>
-      prev.map((item) =>
-        item.id === hikeId
-          ? { ...item, interestCount: Number(item.interestCount || 0) + 1 }
-          : item,
-      ),
-    )
-    showToast('Thanks! You marked this expedition as interesting.')
+      setHikes((prev) =>
+        prev.map((item) =>
+          item.id === hikeId
+            ? { ...item, interestCount: likesCount, likesCount, totalRatings: likesCount }
+            : item,
+        ),
+      )
+
+      showToast(hasLiked ? 'Thanks! You marked this expedition as interesting.' : 'Your like was removed.')
+    } catch (error) {
+      showToast(error.message || 'Unable to update the expedition like.')
+    }
   }
 
   const submitOrganizerRating = (booking, rating) => {
