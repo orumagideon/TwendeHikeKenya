@@ -95,24 +95,65 @@ const events = [];
 const bookings = [];
 const payments = [];
 
+async function ensureDefaultRoles() {
+  if (!config.databaseUrl) {
+    return;
+  }
+
+  const roleNames = ['super_admin', 'organizer', 'hiker'];
+  for (const name of roleNames) {
+    try {
+      await query(`
+        INSERT INTO roles (name, description)
+        VALUES ($1, $2)
+        ON CONFLICT (name) DO NOTHING
+      `, [name, `${name} access`]);
+    } catch (error) {
+      const message = error.message || '';
+      if (!/does not exist|permission denied|relation .*roles.* does not exist/i.test(message)) {
+        throw error;
+      }
+    }
+  }
+}
+
 async function ensureDefaultSuperAdmin() {
   if (!config.databaseUrl) {
     return;
   }
 
   try {
-    const existing = await query('SELECT id FROM users WHERE email = $1 LIMIT 1', [SUPERADMIN_EMAIL]);
-    if (existing.rows.length > 0) {
+    await ensureDefaultRoles();
+
+    const roleResult = await query('SELECT id FROM roles WHERE name = $1 LIMIT 1', ['super_admin']);
+    const roleId = roleResult.rows[0]?.id;
+    if (!roleId) {
       return;
     }
 
     await query(`
-      INSERT INTO users (first_name, last_name, email, phone, password_hash, status)
-      VALUES ($1, $2, $3, $4, $5, $6)
-    `, ['System', 'Admin', SUPERADMIN_EMAIL, '+254700000001', bcrypt.hashSync(DEFAULT_SUPERADMIN_PASSWORD, 10), 'active']);
+      INSERT INTO users (id, first_name, last_name, email, phone, password_hash, role_id, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      ON CONFLICT (email) DO UPDATE SET
+        first_name = EXCLUDED.first_name,
+        last_name = EXCLUDED.last_name,
+        phone = EXCLUDED.phone,
+        password_hash = EXCLUDED.password_hash,
+        role_id = EXCLUDED.role_id,
+        status = EXCLUDED.status
+    `, [
+      '8d8a1ef8-8e6d-4a02-a4f5-3503bc9ee42a',
+      'System',
+      'Admin',
+      SUPERADMIN_EMAIL,
+      '+254700000001',
+      bcrypt.hashSync(DEFAULT_SUPERADMIN_PASSWORD, 10),
+      roleId,
+      'active'
+    ]);
   } catch (error) {
     const message = error.message || '';
-    if (!/does not exist|permission denied|relation .*users.* does not exist/i.test(message)) {
+    if (!/does not exist|permission denied|relation .*users.* does not exist|relation .*roles.* does not exist/i.test(message)) {
       throw error;
     }
   }
@@ -438,6 +479,13 @@ app.post('/api/v1/public/events', async (req, res) => {
 
   try {
     if (config.databaseUrl) {
+      const organizerId = created.organizerId || '8d8a1ef8-8e6d-4a02-a4f5-3503bc9ee42a';
+      const countyId = Number(created.countyId || 30);
+      const checkUser = await query('SELECT id FROM users WHERE id = $1 LIMIT 1', [organizerId]);
+      if (checkUser.rows.length === 0) {
+        await ensureDefaultSuperAdmin();
+      }
+
       const insert = await query(
         `INSERT INTO events (
           organizer_id, county_id, title, slug, summary, description, location_text,
@@ -445,8 +493,8 @@ app.post('/api/v1/public/events', async (req, res) => {
           created_at, updated_at
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW()) RETURNING *`,
         [
-          created.organizerId,
-          created.countyId,
+          organizerId,
+          countyId,
           created.title,
           created.slug,
           created.summary,
@@ -522,11 +570,14 @@ app.post('/api/v1/auth/register', async (req, res) => {
         return res.status(409).json({ success: false, message: 'A user with that email or phone already exists.' });
       }
 
+      const roleResult = await query('SELECT id FROM roles WHERE name = $1 LIMIT 1', [role]);
+      const resolvedRoleId = roleResult.rows[0]?.id || null;
+
       const userResult = await query(`
-        INSERT INTO users (first_name, last_name, email, phone, password_hash, status)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO users (first_name, last_name, email, phone, password_hash, role_id, status)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING id, first_name, last_name, email, phone, status
-      `, [firstName, lastName, email, phone, bcrypt.hashSync(password, 10), 'active']);
+      `, [firstName, lastName, email, phone, bcrypt.hashSync(password, 10), resolvedRoleId, 'active']);
 
       const user = userResult.rows[0];
       const hydratedUser = {
@@ -592,7 +643,13 @@ app.post('/api/v1/auth/login', async (req, res) => {
 
   if (config.databaseUrl) {
     try {
-      const result = await query('SELECT * FROM users WHERE email = $1 LIMIT 1', [email]);
+      const result = await query(`
+        SELECT u.*, r.name AS role
+        FROM users u
+        LEFT JOIN roles r ON r.id = u.role_id
+        WHERE u.email = $1
+        LIMIT 1
+      `, [email]);
       const user = result.rows[0];
 
       if (!user) {
@@ -610,7 +667,7 @@ app.post('/api/v1/auth/login', async (req, res) => {
         lastName: user.last_name,
         email: user.email,
         phone: user.phone,
-        role: 'super_admin',
+        role: user.role || 'super_admin',
       };
 
       return res.json({
