@@ -80,8 +80,12 @@ The project includes PostgreSQL schema files under the backend SQL directory for
 
 ## Default admin login
 
-- Email: admin@twendehike.co.ke
-- Password: @oruma
+Set the following environment variables in the backend before deployment:
+
+- `SUPERADMIN_EMAIL`
+- `SUPERADMIN_PASSWORD`
+
+Do not hardcode or expose production admin credentials in the frontend or public documentation.
 
 ## Notes
 

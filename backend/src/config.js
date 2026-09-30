@@ -6,6 +6,8 @@ export const config = {
   port: Number(process.env.PORT || 4000),
   databaseUrl: process.env.DATABASE_URL || '',
   jwtSecret: process.env.JWT_SECRET || 'dev-secret',
+  superAdminEmail: process.env.SUPERADMIN_EMAIL || 'admin@yourdomain.com',
+  superAdminPassword: process.env.SUPERADMIN_PASSWORD || 'ChangeThisStrongPassword!',
   appBaseUrl: process.env.APP_BASE_URL || 'http://localhost:4000',
   mpesa: {
     consumerKey: process.env.MPESA_CONSUMER_KEY || '',

@@ -220,7 +220,7 @@ function App() {
   })
   const [adminLoginOpen, setAdminLoginOpen] = useState(false)
   const [scannerRef, setScannerRef] = useState('')
-  const [adminCredentials, setAdminCredentials] = useState({ email: 'admin@twendehike.co.ke', password: '@oruma' })
+  const [adminCredentials, setAdminCredentials] = useState({ email: '', password: '' })
   const [adminPasswordForm, setAdminPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' })
   const [adminMessage, setAdminMessage] = useState('')
 
@@ -2264,6 +2264,8 @@ function App() {
                 <input
                   type="email"
                   value={adminCredentials.email}
+                  placeholder="admin@yourdomain.com"
+                  autoComplete="username"
                   onChange={(e) => setAdminCredentials((prev) => ({ ...prev, email: e.target.value }))}
                 />
               </div>
@@ -2273,6 +2275,8 @@ function App() {
                 <input
                   type="password"
                   value={adminCredentials.password}
+                  placeholder="Enter admin password"
+                  autoComplete="current-password"
                   onChange={(e) => setAdminCredentials((prev) => ({ ...prev, password: e.target.value }))}
                 />
               </div>

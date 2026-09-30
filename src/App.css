@@ -2300,6 +2300,10 @@ th {
 }
 
 @media (max-width: 760px) {
+  .app-shell {
+    min-width: 0;
+  }
+
   .modal-backdrop {
     align-items: flex-start;
     padding: 0.75rem;
@@ -2315,12 +2319,15 @@ th {
 
   .topbar {
     gap: 0.8rem;
+    padding: 0.8rem 0.85rem;
   }
 
   .main-nav {
     width: 100%;
     overflow-x: auto;
     justify-content: flex-start;
+    padding: 0.35rem;
+    gap: 0.4rem;
   }
 
   .header-actions {
@@ -2364,6 +2371,10 @@ th {
     padding: 1.4rem;
   }
 
+  .hero-content h1 {
+    font-size: 2rem;
+  }
+
   .queue-actions {
     width: 100%;
     justify-content: stretch;
@@ -2384,5 +2395,51 @@ th {
 
   .ticket-card .ticket-actions button {
     width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .topbar {
+    padding: 0.7rem 0.75rem;
+  }
+
+  .brand-wrap {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .brand-name {
+    font-size: 1rem;
+  }
+
+  .hero-content h1 {
+    font-size: 1.7rem;
+  }
+
+  .hero-content p,
+  .card-description,
+  .modal-section p {
+    font-size: 0.92rem;
+  }
+
+  .main-nav .nav-button {
+    padding: 0.55rem 0.7rem;
+    font-size: 0.8rem;
+    white-space: nowrap;
+  }
+
+  .field-group input,
+  .field-group select,
+  .field-group textarea,
+  .field-box input,
+  .field-box select {
+    font-size: 1rem;
+  }
+
+  .create-modal,
+  .event-modal,
+  .ticket-modal,
+  .checkout-modal {
+    padding: 1rem;
   }
 }

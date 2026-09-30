@@ -74,8 +74,8 @@ const counties = [
   { id: 47, name: 'West Pokot', code: 'WPK' }
 ];
 
-const SUPERADMIN_EMAIL = 'admin@twendehike.co.ke';
-const DEFAULT_SUPERADMIN_PASSWORD = '@oruma';
+const SUPERADMIN_EMAIL = config.superAdminEmail;
+const DEFAULT_SUPERADMIN_PASSWORD = config.superAdminPassword;
 
 const users = [
   {
