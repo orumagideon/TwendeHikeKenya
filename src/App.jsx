@@ -7,10 +7,12 @@ const DEFAULT_HIKER = {
   password: 'Hiker123!',
 }
 
+const DEFAULT_EVENT_IMAGE = 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=1200&q=80'
+
 const fallbackImages = [
+  DEFAULT_EVENT_IMAGE,
   'https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=800&q=80',
   'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=800&q=80',
   'https://images.unsplash.com/photo-1486870591958-9b9d0d1dda99?auto=format&fit=crop&w=800&q=80',
   'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=800&q=80',
   'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=800&q=80',
@@ -119,7 +121,7 @@ const normalizeEvent = (event, index = 0) => {
     elevation: event.elevation || '1,800 m',
     duration: event.duration || '4 - 5 Hours',
     departure: event.departure || '5:30 AM Nairobi CBD',
-    pickup: event.pickup || event.locationText || 'Bata Hilton CBD',
+    pickup: event.pickup || event.locationText || 'Nairobi CBD meeting point',
     googleMapUrl: event.googleMapUrl || event.mapUrl || '',
     date: event.eventDate || event.date || new Date().toISOString(),
     image: event.image || event.photos?.[0] || fallbackImages[index % fallbackImages.length],
@@ -234,11 +236,11 @@ function App() {
   const [hikerAuthError, setHikerAuthError] = useState('')
   const [authLoading, setAuthLoading] = useState(true)
   const [checkoutForm, setCheckoutForm] = useState({
-    fullName: hikerProfile.fullName || 'Wanjiku Kamau',
-    idNumber: '34891024',
-    emergencyContact: hikerProfile.emergencyContact || '0712345678',
-    pickup: 'Bata Hilton CBD (5:30 AM)',
-    phoneNumber: hikerProfile.phoneNumber || '0798765432',
+    fullName: hikerProfile.fullName || '',
+    idNumber: '',
+    emergencyContact: hikerProfile.emergencyContact || '',
+    pickup: '',
+    phoneNumber: hikerProfile.phoneNumber || '',
   })
   const [paymentReference, setPaymentReference] = useState('')
   const [checkoutPayment, setCheckoutPayment] = useState(null)
@@ -311,8 +313,8 @@ function App() {
   const logoutHiker = () => {
     setHikerSession(null)
     setUserBookings([])
-    setHikerProfile({ fullName: 'Wanjiku Kamau', phoneNumber: '+254712345678', emergencyContact: '' })
-    setProfileDraft({ fullName: 'Wanjiku Kamau', phoneNumber: '+254712345678', emergencyContact: '' })
+    setHikerProfile({ fullName: '', phoneNumber: '', emergencyContact: '' })
+    setProfileDraft({ fullName: '', phoneNumber: '', emergencyContact: '' })
     localStorage.removeItem('twendehike_hiker_session')
     showToast('Logged out from your private hiker account.')
   }
@@ -657,7 +659,15 @@ function App() {
       showToast('This hike is sold out. No more tickets are available.')
       return
     }
-    setCheckoutHike({ hike: eventModal, tier: eventModal.tiers[selectedTierIndex] || eventModal.tiers[0] })
+
+    const selectedTier = eventModal.tiers[selectedTierIndex] || eventModal.tiers[0]
+    setCheckoutForm((prev) => ({
+      ...prev,
+      pickup: eventModal.pickup || eventModal.locationText || '',
+      fullName: hikerProfile.fullName || prev.fullName || '',
+      phoneNumber: hikerProfile.phoneNumber || prev.phoneNumber || '',
+    }))
+    setCheckoutHike({ hike: eventModal, tier: selectedTier })
     setCheckoutStep('form')
     setCreateModalOpen(false)
     closeEventModal()
@@ -713,7 +723,7 @@ function App() {
 
       const callbackResponse = await api.mpesaCallback(callbackPayload)
       const bookingId = callbackResponse?.data?.bookingId || `TH-BK-${Math.floor(10000 + Math.random() * 90000)}`
-      const hikerName = (hikerSession?.fullName || hikerProfile.fullName || checkoutForm.fullName || 'Wanjiku Kamau').trim()
+      const hikerName = (hikerSession?.fullName || hikerProfile.fullName || checkoutForm.fullName || 'Hiker').trim()
       const newBooking = {
         bookingId,
         mpesaRef: callbackResponse?.data?.receiptNumber || receipt,
@@ -784,8 +794,14 @@ function App() {
 
   const handleEventImageChange = (event) => {
     const files = Array.from(event.target.files || [])
-    const imageUrls = files.map((file) => URL.createObjectURL(file))
+    const imageUrls = files
+      .filter((file) => file instanceof File)
+      .map((file) => URL.createObjectURL(file))
+
+    if (!imageUrls.length) return
+
     setUploadedEventImages((prev) => [...prev, ...imageUrls])
+    event.target.value = ''
   }
 
   const addInclusion = (value) => {
@@ -840,7 +856,7 @@ function App() {
       return
     }
 
-    const selectedPhotos = uploadedEventImages.length ? uploadedEventImages : ['https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=800&q=80']
+    const selectedPhotos = uploadedEventImages.length ? uploadedEventImages : [DEFAULT_EVENT_IMAGE]
     const customTiers = [
       { name: 'Early Bird', price: earlyPrice, note: 'Promo' },
       { name: 'Standard Hiker', price: standardPrice, active: true },
@@ -1640,7 +1656,7 @@ function App() {
                   <div className="profile-header">
                     <div className="profile-avatar">{(hikerProfile.fullName || 'WK').split(' ').slice(0, 2).map((value) => value[0]).join('').toUpperCase()}</div>
                     <div>
-                      <h2>{hikerProfile.fullName || 'Wanjiku Kamau'}</h2>
+                      <h2>{hikerProfile.fullName || 'Hiker'}</h2>
                       <p>Private hiker profile • {hikerSession.email}</p>
                     </div>
                   </div>
@@ -1919,7 +1935,7 @@ function App() {
                   <div className="manifest-head">
                     <div>
                       <h3>Elephant Hill Expedition — Live Bus Manifest</h3>
-                      <p>Departure: Saturday 5:30 AM • Bata Hilton Nairobi</p>
+                      <p>Departure: Saturday 5:30 AM • Nairobi pickup point</p>
                     </div>
                     <div className="manifest-actions">
                       <button type="button" className="ghost-btn small" onClick={() => showToast('Camera activated. Scanning Hiker QR...')}>
@@ -2270,9 +2286,10 @@ function App() {
             <div className="checkout-header">
               <div className="brand-mark small">M</div>
               <div>
-                <h3>Lipa na M-PESA</h3>
-                <p>Paybill: 890450 • TwendeHike Escrow</p>
+                <h3>M-PESA Checkout</h3>
+                <p>Complete your payment securely from your phone.</p>
               </div>
+              <button type="button" className="ghost-btn small" onClick={() => setCheckoutHike(null)}>Cancel</button>
             </div>
 
             {checkoutStep === 'form' && (
@@ -2310,10 +2327,12 @@ function App() {
 
                 <div className="field-group">
                   <label>Pickup Bus Location</label>
-                  <select value={checkoutForm.pickup} onChange={(e) => setCheckoutForm((prev) => ({ ...prev, pickup: e.target.value }))}>
-                    <option>Bata Hilton CBD (5:30 AM)</option>
-                    <option>Total Energies Limuru Rd (6:15 AM)</option>
-                    <option>Direct at Park Gate (Self Drive)</option>
+                  <select value={checkoutForm.pickup || ''} onChange={(e) => setCheckoutForm((prev) => ({ ...prev, pickup: e.target.value }))}>
+                    <option value="">Select pickup point</option>
+                    {checkoutHike?.hike?.pickup ? <option value={checkoutHike.hike.pickup}>{checkoutHike.hike.pickup}</option> : null}
+                    <option value="Nairobi CBD">Nairobi CBD</option>
+                    <option value="Nairobi National Park Gate">Nairobi National Park Gate</option>
+                    <option value="Direct at trailhead">Direct at trailhead</option>
                   </select>
                 </div>
 
@@ -2354,7 +2373,7 @@ function App() {
                       </div>
                     </div>
                     <div className="sim-text">
-                      Do you want to pay <strong>KES {Number(checkoutHike.tier.price).toLocaleString()}</strong> to TWENDEHIKE KENYA Paybill 890450?
+                      Do you want to pay <strong>KES {Number(checkoutHike.tier.price).toLocaleString()}</strong> for this hiking trip via M-PESA?
                     </div>
                     <label>Enter M-PESA PIN</label>
                     <input value="••••" readOnly />
@@ -2382,7 +2401,7 @@ function App() {
                     <span>JUST NOW</span>
                   </div>
                   <p>
-                    <strong>{paymentReference || 'MPESA CONFIRMED'}</strong> Confirmed. KES {Number(checkoutHike.tier.price).toLocaleString()} sent to TWENDEHIKE ESCROW for {checkoutHike.hike.title}.
+                    <strong>{paymentReference || 'MPESA CONFIRMED'}</strong> Confirmed. KES {Number(checkoutHike.tier.price).toLocaleString()} has been received for {checkoutHike.hike.title}.
                   </p>
                 </div>
 
@@ -2519,12 +2538,12 @@ function App() {
 
               <div className="field-group">
                 <label>Pickup Meeting Point in Nairobi</label>
-                <input name="newPickup" required placeholder="Bata Hilton CBD at 5:30 AM" />
+                <input name="newPickup" required placeholder="e.g. Nairobi CBD / Nairobi National Park Gate" />
               </div>
 
               <div className="field-group">
                 <label>Google Maps Link for Meeting Point</label>
-                <input name="newMapUrl" type="url" placeholder="https://maps.google.com/?q=Bata Hilton Nairobi" />
+                <input name="newMapUrl" type="url" placeholder="https://maps.google.com/?q=Nairobi CBD" />
               </div>
 
               <div className="field-group">

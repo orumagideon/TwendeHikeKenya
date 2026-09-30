@@ -473,6 +473,12 @@ app.post('/api/v1/public/events', async (req, res) => {
   const fallbackDescription = String(description || '').trim() || String(summary || '').trim() || String(title || '').trim() || 'Exciting hike with Twende Hike Kenya';
   const normalizedDescription = String(fallbackDescription || '').trim();
   const normalizedSummary = String(summary || description || normalizedDescription || '').trim() || normalizedDescription;
+  const cleanSlug = String(normalizedTitle || 'hike')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'hike';
+  const uniqueSlug = `${cleanSlug}-${Date.now().toString(36)}`;
 
   const normalizedEventDate = eventDate || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
   const normalizedStartTime = startTime || '06:00:00';
@@ -486,7 +492,7 @@ app.post('/api/v1/public/events', async (req, res) => {
     organizerId: null,
     countyId: normalizedCountyId,
     title: normalizedTitle,
-    slug: normalizedTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+    slug: uniqueSlug,
     summary: normalizedSummary,
     description: normalizedDescription,
     locationText: locationText || 'Nairobi',
@@ -794,13 +800,19 @@ app.post('/api/v1/organizer/events', authMiddleware, requireRoles('organizer'), 
   const fallbackDescription = String(description || '').trim() || String(summary || '').trim() || String(title || '').trim() || 'Exciting hike with Twende Hike Kenya';
   const normalizedDescription = String(fallbackDescription || '').trim();
   const normalizedSummary = String(summary || description || normalizedDescription || '').trim() || normalizedDescription;
+  const cleanSlug = String(normalizedTitle || 'hike')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'hike';
+  const uniqueSlug = `${cleanSlug}-${Date.now().toString(36)}`;
 
   const event = {
     id: uuidv4(),
     organizerId: req.user.sub,
     countyId: Number(countyId) || 1,
     title: normalizedTitle,
-    slug: normalizedTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+    slug: uniqueSlug,
     summary: normalizedSummary,
     description: normalizedDescription,
     locationText: locationText || 'Unknown location',
