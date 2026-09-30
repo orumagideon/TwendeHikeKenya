@@ -817,6 +817,7 @@ function App() {
     const pickup = (form.newPickup?.value || '').trim()
     const googleMapUrl = (form.newMapUrl?.value || '').trim()
     const description = (form.newDesc?.value || '').trim()
+    const summary = description || title || 'Exciting hike with Twende Hike Kenya'
     const maxTickets = Number(form.newMaxTickets?.value || 0)
     const publicHostName = (form.newHostName?.value || '').trim() || 'Kenyan Explorer'
     const additionalTicketsNeeded = Number(form.newAdditionalTickets?.value || 0)
@@ -850,7 +851,6 @@ function App() {
     }
 
     const newHike = {
-      id: `hike-${Date.now()}`,
       title,
       tag: 'prep',
       county: countyValue,
@@ -870,7 +870,7 @@ function App() {
       interestCount: 0,
       visibleName: true,
       verified: false,
-      description,
+      description: description || summary || title || 'Exciting hike with Twende Hike Kenya',
       inclusions: selectedInclusions.length ? selectedInclusions : DEFAULT_INCLUSIONS,
       gear: selectedChecklistItems.length ? selectedChecklistItems : DEFAULT_CHECKLIST,
       tiers: customTiers,
@@ -883,9 +883,9 @@ function App() {
     let storedEvent = { ...newHike }
     try {
       const createResponse = await api.createEvent({
-        title: String(title || '').trim(),
-        summary: String(description || '').trim(),
-        description: String(description || '').trim(),
+        title: String(title || '').trim() || 'Untitled Hike',
+        summary: String(summary || '').trim() || 'Exciting hike with Twende Hike Kenya',
+        description: String(description || summary || '').trim() || 'Exciting hike with Twende Hike Kenya',
         countyId: Number(countyId) || 30,
         locationText: pickup || countyValue || 'Nairobi',
         eventDate: date || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),

@@ -469,13 +469,10 @@ app.post('/api/v1/public/events', async (req, res) => {
     images = [],
   } = req.body;
 
-  const normalizedTitle = String(title || '').trim();
-  const normalizedDescription = String(description || '').trim();
-  const normalizedSummary = String(summary || description || '').trim();
-
-  if (!normalizedTitle || !normalizedDescription) {
-    return res.status(400).json({ success: false, message: 'Title and description are required.' });
-  }
+  const normalizedTitle = String(title || '').trim() || 'Untitled Hike';
+  const fallbackDescription = String(description || '').trim() || String(summary || '').trim() || String(title || '').trim() || 'Exciting hike with Twende Hike Kenya';
+  const normalizedDescription = String(fallbackDescription || '').trim();
+  const normalizedSummary = String(summary || description || normalizedDescription || '').trim() || normalizedDescription;
 
   const normalizedEventDate = eventDate || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
   const normalizedStartTime = startTime || '06:00:00';
@@ -793,12 +790,10 @@ app.get('/api/v1/organizer/dashboard', authMiddleware, requireRoles('organizer')
 app.post('/api/v1/organizer/events', authMiddleware, requireRoles('organizer'), async (req, res) => {
   const { title, summary, description, countyId, locationText, eventDate, startTime, endTime, price, capacity } = req.body;
 
-  const normalizedTitle = String(title || '').trim();
-  const normalizedDescription = String(description || '').trim();
-
-  if (!normalizedTitle || !normalizedDescription) {
-    return res.status(400).json({ success: false, message: 'Title and description are required.' });
-  }
+  const normalizedTitle = String(title || '').trim() || 'Untitled Hike';
+  const fallbackDescription = String(description || '').trim() || String(summary || '').trim() || String(title || '').trim() || 'Exciting hike with Twende Hike Kenya';
+  const normalizedDescription = String(fallbackDescription || '').trim();
+  const normalizedSummary = String(summary || description || normalizedDescription || '').trim() || normalizedDescription;
 
   const event = {
     id: uuidv4(),
@@ -806,7 +801,7 @@ app.post('/api/v1/organizer/events', authMiddleware, requireRoles('organizer'), 
     countyId: Number(countyId) || 1,
     title: normalizedTitle,
     slug: normalizedTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-    summary: String(summary || description || '').trim(),
+    summary: normalizedSummary,
     description: normalizedDescription,
     locationText: locationText || 'Unknown location',
     eventDate: eventDate || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
