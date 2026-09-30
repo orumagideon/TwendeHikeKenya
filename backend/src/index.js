@@ -95,6 +95,158 @@ const events = [];
 const bookings = [];
 const payments = [];
 
+async function ensureDatabaseSchema() {
+  if (!config.databaseUrl) {
+    return;
+  }
+
+  const statements = [
+    `CREATE TABLE IF NOT EXISTS roles (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS users (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      role_id INTEGER REFERENCES roles(id),
+      first_name VARCHAR(100) NOT NULL,
+      last_name VARCHAR(100) NOT NULL,
+      email VARCHAR(255) UNIQUE NOT NULL,
+      phone VARCHAR(30) UNIQUE NOT NULL,
+      password_hash VARCHAR(255) NOT NULL,
+      status VARCHAR(30) NOT NULL DEFAULT 'active',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_login_at TIMESTAMPTZ
+    )`,
+    `CREATE TABLE IF NOT EXISTS counties (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(120) UNIQUE NOT NULL,
+      code VARCHAR(10) UNIQUE NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS events (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      organizer_id UUID NOT NULL,
+      county_id INTEGER NOT NULL,
+      title VARCHAR(200) NOT NULL,
+      slug VARCHAR(220) UNIQUE NOT NULL,
+      summary TEXT,
+      description TEXT NOT NULL,
+      location_text VARCHAR(255) NOT NULL,
+      latitude NUMERIC(9,6),
+      longitude NUMERIC(9,6),
+      event_date TIMESTAMPTZ NOT NULL,
+      start_time TIME NOT NULL,
+      end_time TIME,
+      price NUMERIC(10,2) NOT NULL DEFAULT 0,
+      capacity INTEGER NOT NULL CHECK (capacity > 0),
+      booked_slots INTEGER NOT NULL DEFAULT 0,
+      available_slots INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'draft',
+      submission_notes TEXT,
+      admin_notes TEXT,
+      approved_by UUID,
+      approved_at TIMESTAMPTZ,
+      published_at TIMESTAMPTZ,
+      archived_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS event_images (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      event_id UUID NOT NULL,
+      image_url TEXT NOT NULL,
+      caption VARCHAR(255),
+      is_cover BOOLEAN NOT NULL DEFAULT FALSE,
+      display_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (event_id, display_order)
+    )`,
+    `CREATE TABLE IF NOT EXISTS bookings (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      event_id UUID NOT NULL,
+      user_id UUID NOT NULL,
+      ticket_code VARCHAR(40) UNIQUE NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 1,
+      unit_price NUMERIC(10,2) NOT NULL,
+      total_amount NUMERIC(10,2) NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      reservation_expires_at TIMESTAMPTZ,
+      payment_reference VARCHAR(100),
+      mpesa_receipt_number VARCHAR(100),
+      checked_in BOOLEAN NOT NULL DEFAULT FALSE,
+      checked_in_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      paid_at TIMESTAMPTZ,
+      cancelled_at TIMESTAMPTZ,
+      cancellation_reason TEXT
+    )`,
+    `CREATE TABLE IF NOT EXISTS payments (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      booking_id UUID NOT NULL,
+      user_id UUID NOT NULL,
+      event_id UUID NOT NULL,
+      provider VARCHAR(50) NOT NULL DEFAULT 'mpesa',
+      amount NUMERIC(10,2) NOT NULL,
+      phone_number VARCHAR(30),
+      status TEXT NOT NULL DEFAULT 'initiated',
+      checkout_request_id VARCHAR(120),
+      merchant_request_id VARCHAR(120),
+      callback_payload JSONB,
+      mpesa_receipt_number VARCHAR(120),
+      transaction_date TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS payouts (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      organizer_id UUID NOT NULL,
+      event_id UUID,
+      payout_reference VARCHAR(120) UNIQUE NOT NULL,
+      gross_amount NUMERIC(10,2) NOT NULL,
+      platform_fee NUMERIC(10,2) NOT NULL DEFAULT 0,
+      net_amount NUMERIC(10,2) NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      paid_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`,
+    `CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone)`,
+    `CREATE INDEX IF NOT EXISTS idx_events_status_date ON events(status, event_date)`,
+    `CREATE INDEX IF NOT EXISTS idx_bookings_event_id ON bookings(event_id)`,
+  ];
+
+  for (const statement of statements) {
+    try {
+      await query(statement);
+    } catch (error) {
+      const message = error.message || '';
+      const ignorable = /already exists|duplicate key|duplicate object|relation .* already exists/i.test(message);
+      if (!ignorable) {
+        throw error;
+      }
+    }
+  }
+}
+
+async function withSchemaRetry(operation) {
+  try {
+    return await operation();
+  } catch (error) {
+    const relationMissing = /relation .* does not exist|does not exist/i.test(error.message || '');
+    if (config.databaseUrl && relationMissing) {
+      await ensureDatabaseSchema();
+      return await operation();
+    }
+    throw error;
+  }
+}
+
 function buildPublicEvent(event) {
   const organizer = users.find((user) => user.id === event.organizerId) || null;
 
@@ -140,54 +292,59 @@ app.get('/api/v1/public/events', async (req, res) => {
   const { countyId, minPrice = 0, maxPrice = Number.MAX_SAFE_INTEGER, search = '' } = req.query;
 
   try {
+    let payload = [];
+
     if (config.databaseUrl) {
-      const result = await query(`
-        SELECT e.*, c.name AS county_name
-        FROM events e
-        LEFT JOIN counties c ON c.id = e.county_id
-        WHERE e.status IN ('published', 'approved') AND e.event_date > NOW()
-      `);
+      await withSchemaRetry(async () => {
+        const result = await query(`
+          SELECT e.*, c.name AS county_name
+          FROM events e
+          LEFT JOIN counties c ON c.id = e.county_id
+          WHERE e.status IN ('published', 'approved') AND e.event_date > NOW()
+        `);
 
-      const rows = result.rows.map((row) => ({
-        ...row,
-        county: row.county_name ? { id: row.county_id, name: row.county_name } : null,
-        organizer: { id: row.organizer_id, firstName: 'Twende', lastName: 'Host', email: '', role: 'organizer' },
-        organizerName: 'Twende Host',
-        summary: row.summary || row.description || '',
-        eventDate: row.event_date,
-        startTime: row.start_time,
-        endTime: row.end_time,
-        price: Number(row.price || 0),
-        capacity: Number(row.capacity || 0),
-        bookedSlots: Number(row.booked_slots || 0),
-        availableSlots: Number(row.available_slots || 0),
-        status: row.status,
-      }));
+        const rows = result.rows.map((row) => ({
+          ...row,
+          county: row.county_name ? { id: row.county_id, name: row.county_name } : null,
+          organizer: { id: row.organizer_id, firstName: 'Twende', lastName: 'Host', email: '', role: 'organizer' },
+          organizerName: 'Twende Host',
+          summary: row.summary || row.description || '',
+          eventDate: row.event_date,
+          startTime: row.start_time,
+          endTime: row.end_time,
+          price: Number(row.price || 0),
+          capacity: Number(row.capacity || 0),
+          bookedSlots: Number(row.booked_slots || 0),
+          availableSlots: Number(row.available_slots || 0),
+          status: row.status,
+        }));
 
-      const filtered = rows.filter((event) => {
-        const matchesCounty = countyId ? String(event.county_id) === String(countyId) : true;
+        payload = rows.filter((event) => {
+          const matchesCounty = countyId ? String(event.county_id) === String(countyId) : true;
+          const matchesPrice = Number(event.price) >= Number(minPrice) && Number(event.price) <= Number(maxPrice);
+          const term = String(search).toLowerCase();
+          const matchesSearch = !term || `${event.title} ${event.summary}`.toLowerCase().includes(term);
+          return matchesCounty && matchesPrice && matchesSearch;
+        }).map(buildPublicEvent);
+      });
+    } else {
+      const filtered = events.filter((event) => {
+        const matchesCounty = countyId ? String(event.countyId) === String(countyId) : true;
         const matchesPrice = Number(event.price) >= Number(minPrice) && Number(event.price) <= Number(maxPrice);
         const term = String(search).toLowerCase();
         const matchesSearch = !term || `${event.title} ${event.summary}`.toLowerCase().includes(term);
-        return matchesCounty && matchesPrice && matchesSearch;
+        return (event.status === 'published' || event.status === 'approved') && new Date(event.eventDate) > new Date() && matchesCounty && matchesPrice && matchesSearch;
       });
 
-      return res.json({ success: true, data: filtered.map(buildPublicEvent) });
+      payload = filtered.map(buildPublicEvent);
     }
 
-    const filtered = events.filter((event) => {
-      const matchesCounty = countyId ? String(event.countyId) === String(countyId) : true;
-      const matchesPrice = Number(event.price) >= Number(minPrice) && Number(event.price) <= Number(maxPrice);
-      const term = String(search).toLowerCase();
-      const matchesSearch = !term || `${event.title} ${event.summary}`.toLowerCase().includes(term);
-      return (event.status === 'published' || event.status === 'approved') && new Date(event.eventDate) > new Date() && matchesCounty && matchesPrice && matchesSearch;
-    });
-
-    return res.json({ success: true, data: filtered.map(buildPublicEvent) });
+    return res.json({ success: true, data: payload });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message || 'Unable to load events.' });
   }
 });
+
 
 app.post('/api/v1/public/events', async (req, res) => {
   const {
@@ -697,6 +854,12 @@ app.use((req, res) => {
   res.status(404).json({ success: false, message: `Route not found: ${req.originalUrl}` });
 });
 
-app.listen(config.port, () => {
-  console.log(`Twende Hike Kenya backend listening on port ${config.port}`);
+app.listen(config.port, async () => {
+  try {
+    await ensureDatabaseSchema();
+    console.log(`Twende Hike Kenya backend listening on port ${config.port}`);
+  } catch (error) {
+    console.error('Database bootstrap failed:', error.message || error);
+    console.log(`Twende Hike Kenya backend listening on port ${config.port}`);
+  }
 });
