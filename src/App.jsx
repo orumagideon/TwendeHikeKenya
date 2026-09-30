@@ -42,6 +42,42 @@ const DEFAULT_CHECKLIST = [
   'Sun hat and sunscreen',
 ]
 
+const STORAGE_KEYS = {
+  hikes: 'twendehike_marketplace_hikes',
+  pending: 'twendehike_pending_hikes',
+  approved: 'twendehike_approved_hikes',
+  removed: 'twendehike_removed_hikes',
+  completed: 'twendehike_completed_hikes',
+}
+
+const readStorage = (key, fallback) => {
+  if (typeof window === 'undefined') return fallback
+  try {
+    const value = window.localStorage.getItem(key)
+    return value ? JSON.parse(value) : fallback
+  } catch (error) {
+    return fallback
+  }
+}
+
+const getEffectiveTier = (hike) => {
+  const tiers = Array.isArray(hike?.tiers) ? hike.tiers : []
+  if (!tiers.length) {
+    return { name: 'Standard Hiker', price: Number(hike?.price || 0) }
+  }
+
+  const eventDate = new Date(hike?.date || hike?.eventDate || Date.now())
+  const cutoff = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
+  const earlyBirdTier = tiers.find((tier) => /^early/i.test(String(tier.name || '')) && Number(tier.price || 0) > 0)
+  const standardTier = tiers.find((tier) => /standard|regular/i.test(String(tier.name || '')) && Number(tier.price || 0) > 0) || tiers[0]
+
+  if (eventDate > cutoff && earlyBirdTier) {
+    return earlyBirdTier
+  }
+
+  return standardTier || tiers[0]
+}
+
 const createOrganizerCredential = () => {
   const seed = Math.random().toString(36).slice(2, 8)
   return {
@@ -94,16 +130,7 @@ const normalizeEvent = (event, index = 0) => {
   }
 }
 
-const initialPending = [
-  {
-    id: 'pend-1',
-    title: 'Menengai Crater Caldera Exploration',
-    county: 'Nakuru',
-    organizer: 'Great Rift Explorers',
-    price: 'KES 2,800',
-    date: '2026-10-31',
-  },
-]
+const initialPending = []
 
 const generateOrganizerPassword = (name, email, phone) => {
   const cleanName = (name || 'host').replace(/[^a-zA-Z]/g, '').slice(0, 3).toUpperCase() || 'HST'
@@ -124,35 +151,33 @@ function App() {
   const [countyDisplayLimit, setCountyDisplayLimit] = useState(5)
   const [maxPrice, setMaxPrice] = useState(15000)
   const [mapMode, setMapMode] = useState('grid')
-  const [hikes, setHikes] = useState([])
+  const [hikes, setHikes] = useState(() => readStorage(STORAGE_KEYS.hikes, []))
   const [userBookings, setUserBookings] = useState([])
   const [hikerProfile, setHikerProfile] = useState(() => {
-    if (typeof window === 'undefined') return { fullName: 'Wanjiku Kamau', phoneNumber: '+254712345678' }
+    if (typeof window === 'undefined') return { fullName: '', phoneNumber: '' }
     try {
       const storedProfile = localStorage.getItem('twendehike_hiker_profile')
-      return storedProfile ? JSON.parse(storedProfile) : { fullName: 'Wanjiku Kamau', phoneNumber: '+254712345678' }
+      return storedProfile ? JSON.parse(storedProfile) : { fullName: '', phoneNumber: '' }
     } catch (error) {
-      return { fullName: 'Wanjiku Kamau', phoneNumber: '+254712345678' }
+      return { fullName: '', phoneNumber: '' }
     }
   })
   const [profileDraft, setProfileDraft] = useState(() => {
-    if (typeof window === 'undefined') return { fullName: 'Wanjiku Kamau', phoneNumber: '+254712345678' }
+    if (typeof window === 'undefined') return { fullName: '', phoneNumber: '' }
     try {
       const storedProfile = localStorage.getItem('twendehike_hiker_profile')
-      return storedProfile ? JSON.parse(storedProfile) : { fullName: 'Wanjiku Kamau', phoneNumber: '+254712345678' }
+      return storedProfile ? JSON.parse(storedProfile) : { fullName: '', phoneNumber: '' }
     } catch (error) {
-      return { fullName: 'Wanjiku Kamau', phoneNumber: '+254712345678' }
+      return { fullName: '', phoneNumber: '' }
     }
   })
   const [organizerManifest, setOrganizerManifest] = useState([])
-  const [pendingHikes, setPendingHikes] = useState(initialPending)
-  const [approvedHikes, setApprovedHikes] = useState([])
+  const [pendingHikes, setPendingHikes] = useState(() => readStorage(STORAGE_KEYS.pending, initialPending))
+  const [approvedHikes, setApprovedHikes] = useState(() => readStorage(STORAGE_KEYS.approved, []))
   const [organizerRequests, setOrganizerRequests] = useState([
     { id: 'host-req-1', name: 'Peter Mwangi', email: 'peter@greatriftadventures.co.ke', phone: '+254712345678', organization: 'Great Rift Adventures', status: 'pending' },
   ])
-  const [approvedOrganizers, setApprovedOrganizers] = useState([
-    { id: 'host-approved-1', name: 'Outdoor Kenya Expeditions', email: 'organizer@twendehike.co.ke', phone: '+254700000123', password: 'Organizer123!', visibleName: true },
-  ])
+  const [approvedOrganizers, setApprovedOrganizers] = useState([])
   const [darkMode, setDarkMode] = useState(() => {
     if (typeof window === 'undefined') return false
     return window.localStorage.getItem('twendehike_theme') === 'dark'
@@ -203,11 +228,9 @@ function App() {
   })
   const [paymentReference, setPaymentReference] = useState('')
   const [checkoutPayment, setCheckoutPayment] = useState(null)
-  const [removedHikes, setRemovedHikes] = useState([])
-  const [completedHikes, setCompletedHikes] = useState([])
-  const [ticketRequests, setTicketRequests] = useState([
-    { id: 'req-1', title: 'Menengai Crater Loop', organizer: 'Great Rift Explorers', requested: 12, status: 'pending' },
-  ])
+  const [removedHikes, setRemovedHikes] = useState(() => readStorage(STORAGE_KEYS.removed, []))
+  const [completedHikes, setCompletedHikes] = useState(() => readStorage(STORAGE_KEYS.completed, []))
+  const [ticketRequests, setTicketRequests] = useState([])
   const [uploadedEventImages, setUploadedEventImages] = useState([])
   const [organizerRatings, setOrganizerRatings] = useState({})
   const [likedHikes, setLikedHikes] = useState(() => {
@@ -481,6 +504,26 @@ function App() {
   }, [hikerProfile])
 
   useEffect(() => {
+    window.localStorage.setItem(STORAGE_KEYS.pending, JSON.stringify(pendingHikes))
+  }, [pendingHikes])
+
+  useEffect(() => {
+    window.localStorage.setItem(STORAGE_KEYS.approved, JSON.stringify(approvedHikes))
+  }, [approvedHikes])
+
+  useEffect(() => {
+    window.localStorage.setItem(STORAGE_KEYS.removed, JSON.stringify(removedHikes))
+  }, [removedHikes])
+
+  useEffect(() => {
+    window.localStorage.setItem(STORAGE_KEYS.completed, JSON.stringify(completedHikes))
+  }, [completedHikes])
+
+  useEffect(() => {
+    window.localStorage.setItem(STORAGE_KEYS.hikes, JSON.stringify(hikes))
+  }, [hikes])
+
+  useEffect(() => {
     const bootstrap = async () => {
       try {
         const storedUser = getStoredUser()
@@ -490,7 +533,13 @@ function App() {
 
         const eventsResult = await api.getPublicEvents()
         const eventList = Array.isArray(eventsResult?.data) ? eventsResult.data : []
-        setHikes(eventList.map((item, index) => normalizeEvent(item, index)))
+        const normalizedRemote = eventList.map((item, index) => normalizeEvent(item, index))
+        const persistedApproved = readStorage(STORAGE_KEYS.approved, [])
+        const merged = [...normalizedRemote, ...persistedApproved].filter((item, index, array) => {
+          const key = `${item.id}-${item.title}`
+          return array.findIndex((entry) => `${entry.id}-${entry.title}` === key) === index
+        })
+        setHikes(merged)
 
         if (hikerSession) {
           setUserBookings(hikerSession.bookings || [])
@@ -712,7 +761,7 @@ function App() {
     setSelectedChecklistItems((prev) => (prev.includes(trimmed) ? prev : [...prev, trimmed]))
   }
 
-  const handleCreateHikeSubmit = (event) => {
+  const handleCreateHikeSubmit = async (event) => {
     event.preventDefault()
     const form = event.currentTarget
     form.noValidate = true
@@ -791,6 +840,27 @@ function App() {
       status: 'pending_approval',
     }
 
+    try {
+      await api.createEvent({
+        title,
+        summary: description,
+        description,
+        countyId: 1,
+        locationText: pickup,
+        eventDate: date,
+        startTime: '05:30:00',
+        endTime: '13:00:00',
+        price: standardPrice,
+        capacity: maxTickets,
+        status: 'pending_approval',
+        organizerName: publicHostName,
+        images: selectedPhotos,
+        tiers: customTiers,
+      })
+    } catch (error) {
+      showToast(error.message || 'The backend could not store this hike yet. It remains in local queue until deployment is complete.')
+    }
+
     setPendingHikes((prev) => [newHike, ...prev])
     if (additionalTicketsNeeded > 0) {
       setTicketRequests((prev) => [{
@@ -809,8 +879,16 @@ function App() {
     showToast('Form submitted! Awaiting approval.')
   }
 
-  const approveHikeListing = (index) => {
+  const approveHikeListing = async (index) => {
     const approved = pendingHikes[index]
+    if (!approved) return
+
+    try {
+      await api.reviewEvent(approved.id, { decision: 'approved', notes: 'Approved by superadmin' })
+    } catch (error) {
+      // Local fallback for demo/offline mode remains available.
+    }
+
     const normalized = normalizeEvent({ ...approved, status: 'approved', organizerName: approved.organizerName || approved.organizer }, 0)
     setApprovedHikes((prev) => [normalized, ...prev])
     setHikes((prev) => sortHikes([normalized, ...prev]))
@@ -1335,7 +1413,8 @@ function App() {
                 </div>
               ) : (
                 filteredHikes.map((hike) => {
-                  const minPrice = Math.min(...hike.tiers.map((tier) => Number(tier.price || 0)))
+                  const displayTier = getEffectiveTier(hike)
+                  const displayPrice = Number(displayTier?.price || 0)
                   return (
                     <article className="hike-card" key={hike.id}>
                       <div className="card-image-wrap" style={{ backgroundImage: `url(${hike.image})` }}>
@@ -1385,8 +1464,8 @@ function App() {
 
                         <div className="card-footer">
                           <div>
-                            <small>From M-PESA</small>
-                            <strong>KES {minPrice.toLocaleString()}</strong>
+                            <small>{displayTier.name}</small>
+                            <strong>KES {displayPrice.toLocaleString()}</strong>
                           </div>
                           <button type="button" className="primary-btn small" onClick={() => openEventModal(hike)}>
                             Details

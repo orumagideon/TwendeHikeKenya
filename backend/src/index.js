@@ -7,6 +7,7 @@ import { config } from './config.js';
 import { authMiddleware, requireRoles } from './middleware/auth.js';
 import { initiateStkPush, handleMpesaCallback } from './services/mpesaService.js';
 import { buildTicketPdf, generateTicketCode } from './services/ticketService.js';
+import { query } from './lib/db.js';
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
@@ -86,69 +87,10 @@ const users = [
     phone: '+254700000001',
     passwordHash: bcrypt.hashSync(DEFAULT_SUPERADMIN_PASSWORD, 10),
     role: 'super_admin'
-  },
-  {
-    id: '6a1a1d74-39df-4dd2-a615-bd383b35c9b3',
-    firstName: 'Wanjiku',
-    lastName: 'Kariuki',
-    email: 'organizer@twendehike.co.ke',
-    phone: '+254711000011',
-    passwordHash: bcrypt.hashSync('Organizer123!', 10),
-    role: 'organizer'
-  },
-  {
-    id: '3a3163c1-7414-42ef-9553-f59d14909302',
-    firstName: 'Moses',
-    lastName: 'Kiptoo',
-    email: 'hiker@twendehike.co.ke',
-    phone: '+254712345678',
-    passwordHash: bcrypt.hashSync('Hiker123!', 10),
-    role: 'hiker'
   }
 ];
 
-const events = [
-  {
-    id: 'bd14d333-7997-4607-9d15-62536af5e2c1',
-    organizerId: '6a1a1d74-39df-4dd2-a615-bd383b35c9b3',
-    countyId: 6,
-    title: 'Ngong Hills Sunrise Hike',
-    slug: 'ngong-hills-sunrise-hike',
-    summary: 'A scenic start-of-day summit with a fast-paced descent and breakfast stop.',
-    description: 'A well-marked hike for both beginners and intermediate hikers.',
-    locationText: 'Ngong Hills Viewpoint',
-    latitude: -1.3772,
-    longitude: 36.646,
-    eventDate: '2030-05-25T06:00:00.000Z',
-    startTime: '06:00:00',
-    endTime: '11:00:00',
-    price: 1500,
-    capacity: 32,
-    bookedSlots: 18,
-    availableSlots: 14,
-    status: 'published'
-  },
-  {
-    id: 'e712de6f-2846-486d-9f8b-0108406d4f74',
-    organizerId: '6a1a1d74-39df-4dd2-a615-bd383b35c9b3',
-    countyId: 4,
-    title: 'Menengai Crater Loop',
-    slug: 'menengai-crater-loop',
-    summary: 'Volcanic rim walk with panoramic views and a community lunch stop.',
-    description: 'A moderate crater loop with breathtaking overlooks and guided storytelling.',
-    locationText: 'Menengai Crater, Nakuru',
-    latitude: -0.2167,
-    longitude: 36.0667,
-    eventDate: '2030-06-08T07:00:00.000Z',
-    startTime: '07:00:00',
-    endTime: '13:00:00',
-    price: 2200,
-    capacity: 28,
-    bookedSlots: 12,
-    availableSlots: 16,
-    status: 'approved'
-  }
-];
+const events = [];
 
 const bookings = [];
 const payments = [];
@@ -194,18 +136,138 @@ app.get('/api/v1/public/counties', (_req, res) => {
   res.json({ success: true, data: counties });
 });
 
-app.get('/api/v1/public/events', (req, res) => {
+app.get('/api/v1/public/events', async (req, res) => {
   const { countyId, minPrice = 0, maxPrice = Number.MAX_SAFE_INTEGER, search = '' } = req.query;
 
-  const filtered = events.filter((event) => {
-    const matchesCounty = countyId ? String(event.countyId) === String(countyId) : true;
-    const matchesPrice = Number(event.price) >= Number(minPrice) && Number(event.price) <= Number(maxPrice);
-    const term = String(search).toLowerCase();
-    const matchesSearch = !term || `${event.title} ${event.summary}`.toLowerCase().includes(term);
-    return event.status === 'published' && new Date(event.eventDate) > new Date() && matchesCounty && matchesPrice && matchesSearch;
-  });
+  try {
+    if (config.databaseUrl) {
+      const result = await query(`
+        SELECT e.*, c.name AS county_name
+        FROM events e
+        LEFT JOIN counties c ON c.id = e.county_id
+        WHERE e.status = 'published' AND e.event_date > NOW()
+      `);
 
-  res.json({ success: true, data: filtered.map(buildPublicEvent) });
+      const rows = result.rows.map((row) => ({
+        ...row,
+        county: row.county_name ? { id: row.county_id, name: row.county_name } : null,
+        organizer: { id: row.organizer_id, firstName: 'Twende', lastName: 'Host', email: '', role: 'organizer' },
+        organizerName: 'Twende Host',
+        summary: row.summary || row.description || '',
+        eventDate: row.event_date,
+        startTime: row.start_time,
+        endTime: row.end_time,
+        price: Number(row.price || 0),
+        capacity: Number(row.capacity || 0),
+        bookedSlots: Number(row.booked_slots || 0),
+        availableSlots: Number(row.available_slots || 0),
+        status: row.status,
+      }));
+
+      const filtered = rows.filter((event) => {
+        const matchesCounty = countyId ? String(event.county_id) === String(countyId) : true;
+        const matchesPrice = Number(event.price) >= Number(minPrice) && Number(event.price) <= Number(maxPrice);
+        const term = String(search).toLowerCase();
+        const matchesSearch = !term || `${event.title} ${event.summary}`.toLowerCase().includes(term);
+        return matchesCounty && matchesPrice && matchesSearch;
+      });
+
+      return res.json({ success: true, data: filtered.map(buildPublicEvent) });
+    }
+
+    const filtered = events.filter((event) => {
+      const matchesCounty = countyId ? String(event.countyId) === String(countyId) : true;
+      const matchesPrice = Number(event.price) >= Number(minPrice) && Number(event.price) <= Number(maxPrice);
+      const term = String(search).toLowerCase();
+      const matchesSearch = !term || `${event.title} ${event.summary}`.toLowerCase().includes(term);
+      return event.status === 'published' && new Date(event.eventDate) > new Date() && matchesCounty && matchesPrice && matchesSearch;
+    });
+
+    return res.json({ success: true, data: filtered.map(buildPublicEvent) });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || 'Unable to load events.' });
+  }
+});
+
+app.post('/api/v1/public/events', async (req, res) => {
+  const { title, summary, description, countyId, locationText, eventDate, startTime, endTime, price, capacity, status = 'pending_approval' } = req.body;
+
+  if (!title || !description || !eventDate || !startTime || !capacity) {
+    return res.status(400).json({ success: false, message: 'Missing required hike fields.' });
+  }
+
+  const created = {
+    id: uuidv4(),
+    organizerId: users[0]?.id || 'system-admin',
+    countyId: Number(countyId || 30),
+    title,
+    slug: title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+    summary: summary || '',
+    description,
+    locationText: locationText || 'Nairobi',
+    latitude: null,
+    longitude: null,
+    eventDate,
+    startTime,
+    endTime: endTime || null,
+    price: Number(price || 0),
+    capacity: Number(capacity),
+    bookedSlots: 0,
+    availableSlots: Number(capacity),
+    status,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  try {
+    if (config.databaseUrl) {
+      const insert = await query(
+        `INSERT INTO events (
+          organizer_id, county_id, title, slug, summary, description, location_text,
+          event_date, start_time, end_time, price, capacity, booked_slots, available_slots, status,
+          created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW()) RETURNING *`,
+        [
+          created.organizerId,
+          created.countyId,
+          created.title,
+          created.slug,
+          created.summary,
+          created.description,
+          created.locationText,
+          created.eventDate,
+          created.startTime,
+          created.endTime,
+          created.price,
+          created.capacity,
+          created.bookedSlots,
+          created.availableSlots,
+          status,
+        ]
+      );
+
+      const row = insert.rows[0];
+      const saved = {
+        ...created,
+        id: row.id,
+        eventDate: row.event_date,
+        startTime: row.start_time,
+        endTime: row.end_time,
+        price: Number(row.price || 0),
+        capacity: Number(row.capacity || 0),
+        bookedSlots: Number(row.booked_slots || 0),
+        availableSlots: Number(row.available_slots || 0),
+      };
+      events.push(saved);
+      return res.status(201).json({ success: true, data: saved });
+    }
+
+    events.push(created);
+    return res.status(201).json({ success: true, data: created });
+  } catch (error) {
+    events.push(created);
+    return res.status(201).json({ success: true, data: created, warning: error.message || 'Stored in local fallback mode.' });
+  }
 });
 
 app.get('/api/v1/public/events/:id', (req, res) => {
@@ -401,11 +463,28 @@ app.get('/api/v1/admin/events/pending', authMiddleware, requireRoles('super_admi
   return res.json({ success: true, data: pending.map(buildPublicEvent) });
 });
 
-app.patch('/api/v1/admin/events/:id/review', authMiddleware, requireRoles('super_admin'), (req, res) => {
+app.patch('/api/v1/admin/events/:id/review', authMiddleware, requireRoles('super_admin'), async (req, res) => {
   const { decision, notes } = req.body;
   const event = events.find((entry) => entry.id === req.params.id);
 
   if (!event) {
+    if (config.databaseUrl) {
+      try {
+        const result = await query(`
+          UPDATE events
+          SET status = $1,
+              admin_notes = $2,
+              approved_by = $3,
+              approved_at = NOW(),
+              updated_at = NOW()
+          WHERE id = $4
+          RETURNING *
+        `, [decision === 'approved' ? 'approved' : 'archived', notes || '', users[0].id, req.params.id]);
+        return res.json({ success: true, data: result.rows[0] || null });
+      } catch (error) {
+        return res.status(404).json({ success: false, message: 'Event not found.' });
+      }
+    }
     return res.status(404).json({ success: false, message: 'Event not found.' });
   }
 
@@ -415,6 +494,22 @@ app.patch('/api/v1/admin/events/:id/review', authMiddleware, requireRoles('super
 
   event.status = decision === 'approved' ? 'approved' : 'archived';
   event.adminNotes = notes || '';
+
+  if (config.databaseUrl) {
+    try {
+      await query(`
+        UPDATE events
+        SET status = $1,
+            admin_notes = $2,
+            approved_by = $3,
+            approved_at = NOW(),
+            updated_at = NOW()
+        WHERE id = $4
+      `, [event.status, notes || '', users[0].id, event.id]);
+    } catch (error) {
+      // Fallback remains safe in memory if DB updates fail.
+    }
+  }
 
   return res.json({ success: true, data: event });
 });

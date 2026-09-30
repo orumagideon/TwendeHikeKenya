@@ -74,6 +74,18 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
+  createEvent: (payload) =>
+    request('/public/events', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  reviewEvent: (eventId, payload) =>
+    request(`/admin/events/${eventId}/review`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
   getCounties: () => request('/public/counties'),
 
   getPublicEvents: () => request('/public/events'),
