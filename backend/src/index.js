@@ -95,6 +95,29 @@ const events = [];
 const bookings = [];
 const payments = [];
 
+async function ensureDefaultSuperAdmin() {
+  if (!config.databaseUrl) {
+    return;
+  }
+
+  try {
+    const existing = await query('SELECT id FROM users WHERE email = $1 LIMIT 1', [SUPERADMIN_EMAIL]);
+    if (existing.rows.length > 0) {
+      return;
+    }
+
+    await query(`
+      INSERT INTO users (first_name, last_name, email, phone, password_hash, status)
+      VALUES ($1, $2, $3, $4, $5, $6)
+    `, ['System', 'Admin', SUPERADMIN_EMAIL, '+254700000001', bcrypt.hashSync(DEFAULT_SUPERADMIN_PASSWORD, 10), 'active']);
+  } catch (error) {
+    const message = error.message || '';
+    if (!/does not exist|permission denied|relation .*users.* does not exist/i.test(message)) {
+      throw error;
+    }
+  }
+}
+
 async function ensureDatabaseSchema() {
   if (!config.databaseUrl) {
     return;
@@ -492,6 +515,41 @@ app.post('/api/v1/auth/register', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Missing required registration fields.' });
   }
 
+  if (config.databaseUrl) {
+    try {
+      const existing = await query('SELECT id FROM users WHERE email = $1 OR phone = $2 LIMIT 1', [email, phone]);
+      if (existing.rows.length > 0) {
+        return res.status(409).json({ success: false, message: 'A user with that email or phone already exists.' });
+      }
+
+      const userResult = await query(`
+        INSERT INTO users (first_name, last_name, email, phone, password_hash, status)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id, first_name, last_name, email, phone, status
+      `, [firstName, lastName, email, phone, bcrypt.hashSync(password, 10), 'active']);
+
+      const user = userResult.rows[0];
+      const hydratedUser = {
+        id: user.id,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        email: user.email,
+        phone: user.phone,
+        role,
+      };
+
+      return res.status(201).json({
+        success: true,
+        data: {
+          user: hydratedUser,
+          accessToken: signToken(hydratedUser)
+        }
+      });
+    } catch (error) {
+      return res.status(500).json({ success: false, message: error.message || 'Unable to register user.' });
+    }
+  }
+
   const existing = users.find((user) => user.email === email || user.phone === phone);
   if (existing) {
     return res.status(409).json({ success: false, message: 'A user with that email or phone already exists.' });
@@ -530,6 +588,41 @@ app.post('/api/v1/auth/login', async (req, res) => {
 
   if (!email || !password) {
     return res.status(400).json({ success: false, message: 'Email and password are required.' });
+  }
+
+  if (config.databaseUrl) {
+    try {
+      const result = await query('SELECT * FROM users WHERE email = $1 LIMIT 1', [email]);
+      const user = result.rows[0];
+
+      if (!user) {
+        return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+      }
+
+      const isValidPassword = bcrypt.compareSync(password, user.password_hash);
+      if (!isValidPassword) {
+        return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+      }
+
+      const hydratedUser = {
+        id: user.id,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        email: user.email,
+        phone: user.phone,
+        role: 'super_admin',
+      };
+
+      return res.json({
+        success: true,
+        data: {
+          user: hydratedUser,
+          accessToken: signToken(hydratedUser)
+        }
+      });
+    } catch (error) {
+      return res.status(500).json({ success: false, message: error.message || 'Unable to authenticate user.' });
+    }
   }
 
   const user = users.find((entry) => entry.email === email);
@@ -881,6 +974,7 @@ app.use((req, res) => {
 app.listen(config.port, async () => {
   try {
     await ensureDatabaseSchema();
+    await ensureDefaultSuperAdmin();
     console.log(`Twende Hike Kenya backend listening on port ${config.port}`);
   } catch (error) {
     console.error('Database bootstrap failed:', error.message || error);
