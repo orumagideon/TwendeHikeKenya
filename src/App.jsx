@@ -174,9 +174,7 @@ function App() {
   const [organizerManifest, setOrganizerManifest] = useState([])
   const [pendingHikes, setPendingHikes] = useState(() => readStorage(STORAGE_KEYS.pending, initialPending))
   const [approvedHikes, setApprovedHikes] = useState(() => readStorage(STORAGE_KEYS.approved, []))
-  const [organizerRequests, setOrganizerRequests] = useState([
-    { id: 'host-req-1', name: 'Peter Mwangi', email: 'peter@greatriftadventures.co.ke', phone: '+254712345678', organization: 'Great Rift Adventures', status: 'pending' },
-  ])
+  const [organizerRequests, setOrganizerRequests] = useState([])
   const [approvedOrganizers, setApprovedOrganizers] = useState([])
   const [darkMode, setDarkMode] = useState(() => {
     if (typeof window === 'undefined') return false
@@ -522,6 +520,22 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEYS.hikes, JSON.stringify(hikes))
   }, [hikes])
+
+  useEffect(() => {
+    const demoTitles = ['Ngong Hills Sunrise Hike', 'Menengai Crater Loop']
+    Object.values(STORAGE_KEYS).forEach((key) => {
+      try {
+        const storedValue = window.localStorage.getItem(key)
+        if (!storedValue) return
+        const parsed = JSON.parse(storedValue)
+        if (Array.isArray(parsed) && parsed.some((item) => demoTitles.includes(item?.title))) {
+          window.localStorage.removeItem(key)
+        }
+      } catch (error) {
+        // Ignore malformed storage entries; they are not a valid app state.
+      }
+    })
+  }, [])
 
   useEffect(() => {
     const bootstrap = async () => {

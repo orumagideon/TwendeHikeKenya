@@ -145,7 +145,7 @@ app.get('/api/v1/public/events', async (req, res) => {
         SELECT e.*, c.name AS county_name
         FROM events e
         LEFT JOIN counties c ON c.id = e.county_id
-        WHERE e.status = 'published' AND e.event_date > NOW()
+        WHERE e.status IN ('published', 'approved') AND e.event_date > NOW()
       `);
 
       const rows = result.rows.map((row) => ({
@@ -180,7 +180,7 @@ app.get('/api/v1/public/events', async (req, res) => {
       const matchesPrice = Number(event.price) >= Number(minPrice) && Number(event.price) <= Number(maxPrice);
       const term = String(search).toLowerCase();
       const matchesSearch = !term || `${event.title} ${event.summary}`.toLowerCase().includes(term);
-      return event.status === 'published' && new Date(event.eventDate) > new Date() && matchesCounty && matchesPrice && matchesSearch;
+      return (event.status === 'published' || event.status === 'approved') && new Date(event.eventDate) > new Date() && matchesCounty && matchesPrice && matchesSearch;
     });
 
     return res.json({ success: true, data: filtered.map(buildPublicEvent) });
@@ -479,7 +479,7 @@ app.patch('/api/v1/admin/events/:id/review', authMiddleware, requireRoles('super
               updated_at = NOW()
           WHERE id = $4
           RETURNING *
-        `, [decision === 'approved' ? 'approved' : 'archived', notes || '', users[0].id, req.params.id]);
+        `, [decision === 'approved' ? 'published' : 'archived', notes || '', users[0].id, req.params.id]);
         return res.json({ success: true, data: result.rows[0] || null });
       } catch (error) {
         return res.status(404).json({ success: false, message: 'Event not found.' });
@@ -492,7 +492,7 @@ app.patch('/api/v1/admin/events/:id/review', authMiddleware, requireRoles('super
     return res.status(400).json({ success: false, message: 'Decision must be approved or rejected.' });
   }
 
-  event.status = decision === 'approved' ? 'approved' : 'archived';
+  event.status = decision === 'approved' ? 'published' : 'archived';
   event.adminNotes = notes || '';
 
   if (config.databaseUrl) {
