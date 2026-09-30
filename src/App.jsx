@@ -151,7 +151,7 @@ function App() {
   const [countyDisplayLimit, setCountyDisplayLimit] = useState(5)
   const [maxPrice, setMaxPrice] = useState(15000)
   const [mapMode, setMapMode] = useState('grid')
-  const [hikes, setHikes] = useState(() => readStorage(STORAGE_KEYS.hikes, []))
+  const [hikes, setHikes] = useState([])
   const [userBookings, setUserBookings] = useState([])
   const [hikerProfile, setHikerProfile] = useState(() => {
     if (typeof window === 'undefined') return { fullName: '', phoneNumber: '' }
@@ -172,8 +172,8 @@ function App() {
     }
   })
   const [organizerManifest, setOrganizerManifest] = useState([])
-  const [pendingHikes, setPendingHikes] = useState(() => readStorage(STORAGE_KEYS.pending, initialPending))
-  const [approvedHikes, setApprovedHikes] = useState(() => readStorage(STORAGE_KEYS.approved, []))
+  const [pendingHikes, setPendingHikes] = useState([])
+  const [approvedHikes, setApprovedHikes] = useState([])
   const [organizerRequests, setOrganizerRequests] = useState([])
   const [approvedOrganizers, setApprovedOrganizers] = useState([])
   const [darkMode, setDarkMode] = useState(() => {
@@ -548,12 +548,9 @@ function App() {
         const eventsResult = await api.getPublicEvents()
         const eventList = Array.isArray(eventsResult?.data) ? eventsResult.data : []
         const normalizedRemote = eventList.map((item, index) => normalizeEvent(item, index))
-        const persistedApproved = readStorage(STORAGE_KEYS.approved, [])
-        const merged = [...normalizedRemote, ...persistedApproved].filter((item, index, array) => {
-          const key = `${item.id}-${item.title}`
-          return array.findIndex((entry) => `${entry.id}-${entry.title}` === key) === index
-        })
-        setHikes(merged)
+
+        setHikes(normalizedRemote)
+        setApprovedHikes(normalizedRemote)
 
         if (hikerSession) {
           setUserBookings(hikerSession.bookings || [])
