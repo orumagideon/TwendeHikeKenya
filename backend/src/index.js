@@ -100,6 +100,30 @@ async function ensureDatabaseSchema() {
     return;
   }
 
+  const databaseUrl = new URL(config.databaseUrl);
+  const schemaUser = databaseUrl.username ? `"${databaseUrl.username}"` : 'CURRENT_USER';
+
+  const privilegeStatements = [
+    'CREATE SCHEMA IF NOT EXISTS public',
+    `GRANT USAGE, CREATE ON SCHEMA public TO ${schemaUser}`,
+    `GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO ${schemaUser}`,
+    `GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO ${schemaUser}`,
+    `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ${schemaUser}`,
+    `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${schemaUser}`,
+  ];
+
+  for (const statement of privilegeStatements) {
+    try {
+      await query(statement);
+    } catch (error) {
+      const message = error.message || '';
+      const ignorable = /already exists|does not exist|permission denied|duplicate|not owner/i.test(message);
+      if (!ignorable) {
+        throw error;
+      }
+    }
+  }
+
   const statements = [
     `CREATE TABLE IF NOT EXISTS roles (
       id SERIAL PRIMARY KEY,
