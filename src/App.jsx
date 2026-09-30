@@ -55,6 +55,7 @@ const normalizeEvent = (event, index = 0) => {
   const maxTickets = Number(event.maxTickets || event.capacity || 30)
   const soldTickets = Number(event.soldTickets || event.bookedSlots || 0)
   const organizerRating = Number(event.organizerRating || 4.9)
+  const interestCount = Number(event.interestCount ?? event.totalRatings ?? 0)
 
   return {
     id: event.id,
@@ -74,6 +75,7 @@ const normalizeEvent = (event, index = 0) => {
     organizer: organizerName,
     organizerName: organizerName,
     organizerRating,
+    interestCount,
     totalRatings: Number(event.totalRatings || 0),
     visibleName: event.visibleName ?? true,
     verified: event.verified ?? true,
@@ -208,6 +210,14 @@ function App() {
   ])
   const [uploadedEventImages, setUploadedEventImages] = useState([])
   const [organizerRatings, setOrganizerRatings] = useState({})
+  const [likedHikes, setLikedHikes] = useState(() => {
+    if (typeof window === 'undefined') return []
+    try {
+      return JSON.parse(localStorage.getItem('twendehike_liked_hikes') || '[]')
+    } catch (error) {
+      return []
+    }
+  })
   const [adminLoginOpen, setAdminLoginOpen] = useState(false)
   const [scannerRef, setScannerRef] = useState('')
   const [adminCredentials, setAdminCredentials] = useState({ email: 'admin@twendehike.co.ke', password: '@oruma' })
@@ -555,12 +565,6 @@ function App() {
 
   const bookSelectedTier = () => {
     if (!eventModal) return
-    if (!hikerSession) {
-      showToast('Create a hiker account or log in before booking a hike.')
-      setActiveView('hiker-hub')
-      closeEventModal()
-      return
-    }
     if (Number(eventModal.soldTickets || 0) >= Number(eventModal.maxTickets || 0)) {
       showToast('This hike is sold out. No more tickets are available.')
       return
@@ -711,26 +715,38 @@ function App() {
   const handleCreateHikeSubmit = (event) => {
     event.preventDefault()
     const form = event.currentTarget
-    const title = form.newTitle.value
-    const countyValue = form.newCounty.value
-    const difficultyValue = form.newDifficulty.value
-    const date = form.newDate.value
-    const distance = form.newDistance.value
-    const elevation = form.newElevation.value
-    const earlyPrice = Number(form.newPriceEarly.value)
-    const standardPrice = Number(form.newPriceStd.value)
-    const pickup = form.newPickup.value
-    const googleMapUrl = form.newMapUrl.value
-    const description = form.newDesc.value
-    const maxTickets = Number(form.newMaxTickets.value)
-    const publicHostName = form.newHostName.value || (authUser ? `${authUser.firstName} ${authUser.lastName}` : 'Outdoor Kenya Expeditions')
-    const additionalTicketsNeeded = Number(form.newAdditionalTickets.value || 0)
-    const customPackageName = form.newCustomPackageName.value.trim()
-    const customPackagePrice = Number(form.newCustomPackagePrice.value || 0)
-    const customPackageNote = form.newCustomPackageNote.value.trim()
+    form.noValidate = true
+
+    const title = (form.newTitle?.value || '').trim()
+    const countyValue = form.newCounty?.value || 'Nairobi'
+    const difficultyValue = form.newDifficulty?.value || 'Moderate'
+    const date = form.newDate?.value || ''
+    const distance = (form.newDistance?.value || '').trim()
+    const elevation = (form.newElevation?.value || '').trim()
+    const earlyPrice = Number(form.newPriceEarly?.value || 0)
+    const standardPrice = Number(form.newPriceStd?.value || 0)
+    const pickup = (form.newPickup?.value || '').trim()
+    const googleMapUrl = (form.newMapUrl?.value || '').trim()
+    const description = (form.newDesc?.value || '').trim()
+    const maxTickets = Number(form.newMaxTickets?.value || 0)
+    const publicHostName = (form.newHostName?.value || '').trim() || 'Kenyan Explorer'
+    const additionalTicketsNeeded = Number(form.newAdditionalTickets?.value || 0)
+    const customPackageName = (form.newCustomPackageName?.value || '').trim()
+    const customPackagePrice = Number(form.newCustomPackagePrice?.value || 0)
+    const customPackageNote = (form.newCustomPackageNote?.value || '').trim()
+
+    if (!title || !date || !pickup) {
+      showToast('Please add the expedition title, date, and pickup point before submitting.')
+      return
+    }
 
     if (!maxTickets || maxTickets < 1) {
       showToast('Maximum tickets are required before publishing a hike.')
+      return
+    }
+
+    if (!Number.isFinite(earlyPrice) || earlyPrice < 0 || !Number.isFinite(standardPrice) || standardPrice < 0) {
+      showToast('Please enter valid early bird and standard prices before submitting.')
       return
     }
 
@@ -762,6 +778,7 @@ function App() {
       organizer: publicHostName,
       organizerName: publicHostName,
       organizerRating: 4.9,
+      interestCount: 0,
       visibleName: true,
       verified: false,
       description,
@@ -789,7 +806,7 @@ function App() {
     setSelectedInclusions(DEFAULT_INCLUSIONS.slice(0, 3))
     setSelectedChecklistItems(DEFAULT_CHECKLIST.slice(0, 3))
     form.reset()
-    showToast('Expedition submitted! Pending safety verification.')
+    showToast('Form submitted! Awaiting approval.')
   }
 
   const approveHikeListing = (index) => {
@@ -931,6 +948,28 @@ function App() {
 
   const showPass = (booking) => {
     setTicketModal(booking)
+  }
+
+  const handleInterestClick = (hikeId) => {
+    if (likedHikes.includes(hikeId)) {
+      showToast('You have already liked this expedition.')
+      return
+    }
+
+    const nextLikedHikes = [...likedHikes, hikeId]
+    setLikedHikes(nextLikedHikes)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('twendehike_liked_hikes', JSON.stringify(nextLikedHikes))
+    }
+
+    setHikes((prev) =>
+      prev.map((item) =>
+        item.id === hikeId
+          ? { ...item, interestCount: Number(item.interestCount || 0) + 1 }
+          : item,
+      ),
+    )
+    showToast('Thanks! You marked this expedition as interesting.')
   }
 
   const submitOrganizerRating = (booking, rating) => {
@@ -1304,7 +1343,21 @@ function App() {
                           <span className={`badge-chip ${renderDifficultyBadge(hike.difficulty)}`}>{hike.difficulty}</span>
                           <span className="badge-chip light">📍 {hike.county}</span>
                         </div>
-                        <div className="card-rating">★ {hike.organizerRating}</div>
+                        <button
+                          type="button"
+                          className={`card-rating ${likedHikes.includes(hike.id) ? 'liked' : ''}`}
+                          onClick={() => handleInterestClick(hike.id)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              handleInterestClick(hike.id)
+                            }
+                          }}
+                          title="Mark this expedition as interesting"
+                          aria-label={`Mark ${hike.title} as interesting`}
+                        >
+                          ♥ {Number(hike.interestCount || 0)}
+                        </button>
                       </div>
 
                       <div className="card-body">
@@ -2135,6 +2188,20 @@ function App() {
 
                   <div className="sim-body">
                     <div className="sim-header">Safaricom SIM Toolkit</div>
+                    <div className="sim-summary-box">
+                      <div>
+                        <span>Expedition</span>
+                        <strong>{checkoutHike.hike.title}</strong>
+                      </div>
+                      <div>
+                        <span>Ticket</span>
+                        <strong>{checkoutHike.tier.name}</strong>
+                      </div>
+                      <div>
+                        <span>Price</span>
+                        <strong>KES {Number(checkoutHike.tier.price).toLocaleString()}</strong>
+                      </div>
+                    </div>
                     <div className="sim-text">
                       Do you want to pay <strong>KES {Number(checkoutHike.tier.price).toLocaleString()}</strong> to TWENDEHIKE KENYA Paybill 890450?
                     </div>
@@ -2232,7 +2299,7 @@ function App() {
               <button type="button" className="close-button" onClick={() => setCreateModalOpen(false)}>×</button>
             </div>
 
-            <form onSubmit={handleCreateHikeSubmit} className="create-form">
+            <form onSubmit={handleCreateHikeSubmit} noValidate className="create-form">
               <div className="field-group">
                 <label>Expedition Title</label>
                 <input name="newTitle" required placeholder="e.g. Rurimeria Moorland Extreme 4000m Challenge" />
@@ -2266,11 +2333,11 @@ function App() {
                 </div>
                 <div className="field-group">
                   <label>Distance (KM)</label>
-                  <input name="newDistance" required placeholder="e.g. 16 KM" />
+                  <input name="newDistance" placeholder="e.g. 16 KM" />
                 </div>
                 <div className="field-group">
                   <label>Elevation (Meters)</label>
-                  <input name="newElevation" required placeholder="e.g. 3,800m" />
+                  <input name="newElevation" placeholder="e.g. 3,800m" />
                 </div>
               </div>
 
@@ -2292,7 +2359,7 @@ function App() {
 
               <div className="field-group">
                 <label>Public Host Name</label>
-                <input name="newHostName" placeholder="Outdoor Kenya Expeditions" defaultValue={authUser ? `${authUser.firstName} ${authUser.lastName}` : 'Outdoor Kenya Expeditions'} />
+                <input name="newHostName" placeholder="Kenyan Explorer" />
               </div>
 
               <div className="field-group">
@@ -2407,7 +2474,7 @@ function App() {
 
               <div className="field-group">
                 <label>Expedition Overview</label>
-                <textarea name="newDesc" rows="3" required placeholder="Describe the trail terrain, conditions, and expected experience..." />
+                <textarea name="newDesc" rows="3" placeholder="Describe the trail terrain, conditions, and expected experience..." />
               </div>
 
               <div className="create-actions">
