@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Component, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { api, clearSession, getStoredUser, saveSession } from './lib/api'
 
@@ -164,6 +164,34 @@ const generateOrganizerPassword = (name, email, phone) => {
   const uniqueKey = Math.random().toString(36).slice(2, 6).toUpperCase()
   return `${cleanName}${cleanEmail}${cleanPhone}${uniqueKey}!`
 }
+
+const compressImageFile = (file) => new Promise((resolve, reject) => {
+  const objectUrl = URL.createObjectURL(file)
+  const image = new Image()
+  image.onload = () => {
+    const scale = Math.min(1, 1280 / image.width, 720 / image.height)
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(image.width * scale))
+    canvas.height = Math.max(1, Math.round(image.height * scale))
+    canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height)
+    canvas.toBlob((blob) => {
+      URL.revokeObjectURL(objectUrl)
+      if (!blob) {
+        reject(new Error('Unable to compress the selected image.'))
+        return
+      }
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result || ''))
+      reader.onerror = () => reject(new Error('Unable to read the compressed image.'))
+      reader.readAsDataURL(blob)
+    }, 'image/jpeg', 0.75)
+  }
+  image.onerror = () => {
+    URL.revokeObjectURL(objectUrl)
+    reject(new Error('Unable to load the selected image.'))
+  }
+  image.src = objectUrl
+})
 
 function App() {
   const [activeView, setActiveView] = useState('discover')
@@ -943,17 +971,7 @@ function App() {
 
     if (!readableFiles.length) return
 
-    Promise.all(
-      readableFiles.map(
-        (file) =>
-          new Promise((resolve, reject) => {
-            const reader = new FileReader()
-            reader.onload = () => resolve(String(reader.result || ''))
-            reader.onerror = () => reject(new Error('Unable to read the selected image.'))
-            reader.readAsDataURL(file)
-          }),
-      ),
-    )
+    Promise.all(readableFiles.map(compressImageFile))
       .then((imageDataUrls) => {
         setUploadedEventImages((prev) => [...prev, ...imageDataUrls.filter(Boolean)])
         event.target.value = ''
@@ -1501,7 +1519,7 @@ function App() {
   }
 
   if (authLoading) {
-    return <div className="app-shell"><div className="empty-state"><h4>Loading marketplace...</h4></div></div>
+    return <div className="app-shell loading-shell"><div className="loading-skeleton"><span className="loading-spinner" /><h4>Loading marketplace...</h4><p>Preparing your trail board.</p></div></div>
   }
 
   return (
@@ -3263,4 +3281,27 @@ const formatDate = (isoDate) => {
   return d.toLocaleDateString('en-KE', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-export default App
+class AppErrorBoundary extends Component {
+  state = { hasError: false }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error) {
+    console.error('TwendeHike render error:', error)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <div className="app-shell error-shell"><div className="empty-state"><h4>Something went wrong</h4><p>Refresh the page to reload the trail marketplace.</p><button type="button" className="primary-btn small" onClick={() => window.location.reload()}>Reload Marketplace</button></div></div>
+    }
+    return this.props.children
+  }
+}
+
+function AppWithErrorBoundary() {
+  return <AppErrorBoundary><App /></AppErrorBoundary>
+}
+
+export default AppWithErrorBoundary

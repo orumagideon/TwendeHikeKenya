@@ -1,4 +1,5 @@
 import express from 'express';
+import compression from 'compression';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
@@ -10,6 +11,7 @@ import { buildTicketPdf, generateTicketCode } from './services/ticketService.js'
 import { query, withTransaction } from './lib/db.js';
 
 const app = express();
+app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use((req, res, next) => {
   const origin = req.headers.origin || '*';
@@ -359,6 +361,9 @@ async function ensureDatabaseSchema() {
     `CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`,
     `CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone)`,
     `CREATE INDEX IF NOT EXISTS idx_events_status_date ON events(status, event_date)`,
+    `CREATE INDEX IF NOT EXISTS idx_events_county_id ON events(county_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_event_images_event_id ON event_images(event_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_event_likes_event_id ON event_likes(event_id)`,
     `CREATE INDEX IF NOT EXISTS idx_bookings_event_id ON bookings(event_id)`,
   ];
 
@@ -554,15 +559,20 @@ app.get('/api/v1/public/events', async (req, res) => {
             e.*,
             c.name AS county_name,
             COALESCE(
-              json_agg(ei.image_url ORDER BY ei.display_order)
-                FILTER (WHERE ei.image_url IS NOT NULL),
+              CASE WHEN cover.image_url IS NULL THEN '[]'::json ELSE json_build_array(cover.image_url) END,
               '[]'::json
             ) AS photos
           FROM events e
           LEFT JOIN counties c ON c.id = e.county_id
-          LEFT JOIN event_images ei ON ei.event_id = e.id
+          LEFT JOIN LATERAL (
+            SELECT image_url
+            FROM event_images
+            WHERE event_id = e.id
+            ORDER BY display_order ASC
+            LIMIT 1
+          ) cover ON TRUE
           WHERE e.status IN ('published', 'approved') AND e.event_date > NOW()
-          GROUP BY e.id, c.name
+          GROUP BY e.id, c.name, cover.image_url
         `);
 
         const rows = result.rows.map((row) => ({
