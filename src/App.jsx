@@ -1532,11 +1532,15 @@ function App() {
   return (
     <div className={`app-shell ${darkMode ? 'theme-dark' : ''}`}>
       <header className="topbar">
+        <button type="button" className="header-theme-toggle" onClick={() => setDarkMode((value) => !value)} aria-label={darkMode ? 'Use light theme' : 'Use dark theme'}>
+          <span className="theme-icon" aria-hidden="true">{darkMode ? '☀️' : '🌙'}</span>
+          <span className="theme-label">{darkMode ? 'Light' : 'Dark'}</span>
+        </button>
+
         <div className="brand-wrap" onClick={() => setActiveView('discover')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setActiveView('discover')}>
-          <div className="brand-mark">T</div>
           <div className="brand-copy">
             <span className="brand-name">TWENDE<span className="brand-accent">HIKE</span></span>
-            <span className="brand-sub">Kenya Trail Adventures</span>
+            <span className="brand-sub">Kenya Trails</span>
           </div>
         </div>
 
@@ -1566,10 +1570,6 @@ function App() {
         </nav>
 
         <div className="header-actions">
-          <button type="button" className="ghost-btn small header-theme-toggle" onClick={() => setDarkMode((value) => !value)} aria-label={darkMode ? 'Use light theme' : 'Use dark theme'}>
-            <span className="theme-icon" aria-hidden="true">{darkMode ? '☀️' : '🌙'}</span>
-            <span className="theme-label">{darkMode ? 'Light Theme' : 'Dark Theme'}</span>
-          </button>
           {authUser?.role === 'super_admin' ? (
             <button type="button" className="ghost-btn small" onClick={logout}>
               Logout
