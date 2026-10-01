@@ -264,6 +264,7 @@ function App() {
   const [adminLoginOpen, setAdminLoginOpen] = useState(false)
   const [scannerRef, setScannerRef] = useState('')
   const [adminCredentials, setAdminCredentials] = useState({ email: '', password: '' })
+  const [adminProfileForm, setAdminProfileForm] = useState({ firstName: '', lastName: '' })
   const [adminPasswordForm, setAdminPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' })
   const [adminMessage, setAdminMessage] = useState('')
 
@@ -482,6 +483,12 @@ function App() {
     setAdminMessage('')
     showToast('You have been logged out.')
   }
+
+  useEffect(() => {
+    if (authUser?.role === 'super_admin') {
+      setAdminProfileForm({ firstName: authUser.firstName || '', lastName: authUser.lastName || '' })
+    }
+  }, [authUser])
 
   useEffect(() => {
     const hasStoredToken = !!localStorage.getItem('twendehike_access_token')
@@ -823,6 +830,14 @@ function App() {
       })
   }
 
+  const handleRemoveUploadedImage = (indexToRemove) => {
+    setUploadedEventImages((prev) => prev.filter((_, index) => index !== indexToRemove))
+  }
+
+  const clearUploadedEventImages = () => {
+    setUploadedEventImages([])
+  }
+
   const addInclusion = (value) => {
     const trimmed = value.trim()
     if (!trimmed) return
@@ -841,8 +856,8 @@ function App() {
     form.noValidate = true
 
     const title = (form.newTitle?.value || '').trim()
-    const countyValue = form.newCounty?.value || 'Nairobi'
-    const countyId = Number(COUNTY_ID_BY_NAME[countyValue] ?? 30)
+    const countyValue = String(form.newCounty?.value || '').trim()
+    const countyId = Number(COUNTY_ID_BY_NAME[countyValue] || 0)
     const difficultyValue = form.newDifficulty?.value || 'Moderate'
     const date = form.newDate?.value || ''
     const distance = (form.newDistance?.value || '').trim()
@@ -860,8 +875,8 @@ function App() {
     const customPackagePrice = Number(form.newCustomPackagePrice?.value || 0)
     const customPackageNote = (form.newCustomPackageNote?.value || '').trim()
 
-    if (!title || !date || !pickup) {
-      showToast('Please add the expedition title, date, and pickup point before submitting.')
+    if (!title || !date || !pickup || !countyValue || !countyId) {
+      showToast('Please add the expedition title, county, date, and pickup point before submitting.')
       return
     }
 
@@ -921,8 +936,9 @@ function App() {
         title: String(title || '').trim() || 'Untitled Hike',
         summary: String(summary || '').trim() || 'Exciting hike with Twende Hike Kenya',
         description: String(description || summary || '').trim() || 'Exciting hike with Twende Hike Kenya',
-        countyId: Number(countyId) || 30,
-        locationText: pickup || countyValue || 'Nairobi',
+        countyId,
+        countyName: countyValue,
+        locationText: pickup,
         eventDate: date || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
         startTime: '05:30:00',
         endTime: '13:00:00',
@@ -1050,6 +1066,29 @@ function App() {
     showToast(`Listing '${rejected.title}' was rejected.`)
   }
 
+  const deleteEventFromAdmin = async (target) => {
+    if (!target) return
+    if (!target.id) {
+      showToast('This hike has no database ID and cannot be deleted.')
+      return
+    }
+
+    try {
+      const response = await api.deleteEvent(target.id)
+      if (!response?.success) {
+        throw new Error(response?.message || 'The event was not deleted.')
+      }
+      setHikes((prev) => prev.filter((item) => item.id !== target.id))
+      setApprovedHikes((prev) => prev.filter((item) => item.id !== target.id))
+      setPendingHikes((prev) => prev.filter((item) => item.id !== target.id))
+      setRemovedHikes((prev) => prev.filter((item) => item.id !== target.id))
+      setCompletedHikes((prev) => prev.filter((item) => item.id !== target.id))
+      showToast(`${target.title} was permanently deleted.`)
+    } catch (error) {
+      showToast(error.message || 'Unable to delete this hike.')
+    }
+  }
+
   const removeApprovedHike = (index, fromRemoved = false) => {
     const target = fromRemoved ? removedHikes[index] : (approvedHikes[index] || hikes[index])
     if (!target) return
@@ -1077,14 +1116,12 @@ function App() {
   const permanentlyDeleteHike = (index, listType = 'removed') => {
     if (listType === 'removed') {
       const target = removedHikes[index]
-      setRemovedHikes((prev) => prev.filter((_, idx) => idx !== index))
-      showToast(`${target.title} permanently deleted.`)
+      deleteEventFromAdmin(target)
       return
     }
 
     const target = completedHikes[index]
-    setCompletedHikes((prev) => prev.filter((_, idx) => idx !== index))
-    showToast(`${target.title} permanently deleted from completed hikes.`)
+    deleteEventFromAdmin(target)
   }
 
   const organizerPayoutSummary = useMemo(() => {
@@ -1212,6 +1249,7 @@ function App() {
 
       saveSession(loginResult)
       setAuthUser(user)
+      setAdminProfileForm({ firstName: user.firstName || '', lastName: user.lastName || '' })
       setActiveView('admin')
       setAdminLoginOpen(false)
       setAdminMessage('')
@@ -1253,6 +1291,25 @@ function App() {
       showToast('Superadmin password reset complete.')
     } catch (error) {
       setAdminMessage(error.message || 'Unable to reset the superadmin password.')
+    }
+  }
+
+  const handleAdminProfileUpdate = async (event) => {
+    event.preventDefault()
+
+    try {
+      const response = await api.updateAdminProfile(adminProfileForm)
+      const updatedUser = response?.data?.user
+      if (!response?.success || !updatedUser) {
+        throw new Error(response?.message || 'Unable to update admin name.')
+      }
+
+      setAuthUser(updatedUser)
+      saveSession({ data: { user: updatedUser } })
+      setAdminMessage('Superadmin name updated successfully.')
+      showToast('Superadmin name updated.')
+    } catch (error) {
+      setAdminMessage(error.message || 'Unable to update admin name.')
     }
   }
 
@@ -2081,6 +2138,33 @@ function App() {
               </div>
 
               <div className="admin-reset-box">
+                <h3>Update Superadmin Name</h3>
+                <form onSubmit={handleAdminProfileUpdate} className="create-form">
+                  <div className="split-fields">
+                    <div className="field-group">
+                      <label>First Name</label>
+                      <input
+                        value={adminProfileForm.firstName}
+                        onChange={(event) => setAdminProfileForm((prev) => ({ ...prev, firstName: event.target.value }))}
+                        placeholder="First name"
+                      />
+                    </div>
+                    <div className="field-group">
+                      <label>Last Name</label>
+                      <input
+                        value={adminProfileForm.lastName}
+                        onChange={(event) => setAdminProfileForm((prev) => ({ ...prev, lastName: event.target.value }))}
+                        placeholder="Last name"
+                      />
+                    </div>
+                  </div>
+                  <div className="create-actions">
+                    <button type="submit" className="primary-btn small">Update Name</button>
+                  </div>
+                </form>
+              </div>
+
+              <div className="admin-reset-box">
                 <h3>Reset Superadmin Password</h3>
                 <form onSubmit={handleAdminPasswordReset} className="create-form">
                   <div className="split-fields">
@@ -2153,7 +2237,7 @@ function App() {
                       <p>{hike.organizer} • {hike.county} County • {hike.maxTickets} max tickets</p>
                     </div>
                     <div className="queue-actions">
-                      <button type="button" className="ghost-btn small" onClick={() => removeApprovedHike(index, false)}>Remove</button>
+                      <button type="button" className="ghost-btn small" onClick={() => deleteEventFromAdmin(hike)}>Delete</button>
                       <button type="button" className="ghost-btn small" onClick={() => completeApprovedHike(index)}>Complete</button>
                     </div>
                   </div>
@@ -2663,10 +2747,24 @@ function App() {
                 <label>Upload event photos</label>
                 <input type="file" accept="image/*" multiple onChange={handleEventImageChange} />
                 {uploadedEventImages.length > 0 && (
-                  <div className="upload-thumb-row">
-                    {uploadedEventImages.map((imageUrl, imageIndex) => (
-                      <img key={`${imageUrl}-${imageIndex}`} src={imageUrl} alt={`Event photo ${imageIndex + 1}`} className="upload-thumb" />
-                    ))}
+                  <div className="upload-preview-wrap">
+                    <div className="upload-thumb-row">
+                      {uploadedEventImages.map((imageUrl, imageIndex) => (
+                        <div key={`${imageUrl}-${imageIndex}`} className="upload-thumb-item">
+                          <img src={imageUrl} alt={`Event photo ${imageIndex + 1}`} className="upload-thumb" />
+                          <button
+                            type="button"
+                            className="upload-remove-btn"
+                            onClick={() => handleRemoveUploadedImage(imageIndex)}
+                            aria-label={`Remove event photo ${imageIndex + 1}`}
+                            title="Remove photo"
+                          >
+                            x
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <button type="button" className="ghost-btn small" onClick={clearUploadedEventImages}>Clear all photos</button>
                   </div>
                 )}
               </div>

@@ -68,6 +68,12 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
+  updateAdminProfile: (payload) =>
+    request('/admin/profile', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
   register: (payload) =>
     request('/auth/register', {
       method: 'POST',
@@ -84,6 +90,11 @@ export const api = {
     request(`/admin/events/${eventId}/review`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
+    }),
+
+  deleteEvent: (eventId) =>
+    request(`/admin/events/${eventId}`, {
+      method: 'DELETE',
     }),
 
   getCounties: () => request('/public/counties'),

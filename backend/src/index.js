@@ -7,7 +7,7 @@ import { config } from './config.js';
 import { authMiddleware, requireRoles } from './middleware/auth.js';
 import { initiateStkPush, handleMpesaCallback } from './services/mpesaService.js';
 import { buildTicketPdf, generateTicketCode } from './services/ticketService.js';
-import { query } from './lib/db.js';
+import { query, withTransaction } from './lib/db.js';
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -373,6 +373,7 @@ function buildPublicEvent(event) {
   const likesCount = Number(event.likesCount ?? event.likes_count ?? event.interestCount ?? event.interest_count ?? 0);
   const photos = Array.isArray(event.photos) ? event.photos : [];
   const image = photos[0] || event.cover_image || event.coverImage || event.image || null;
+  const countyName = event.county?.name || event.countyName || event.county_name || null;
 
   return {
     ...event,
@@ -380,7 +381,9 @@ function buildPublicEvent(event) {
     image,
     likesCount,
     interestCount: likesCount,
-    county: counties.find((county) => county.id === event.countyId) || null,
+    county: countyName
+      ? { id: event.countyId, name: countyName }
+      : counties.find((county) => county.id === event.countyId) || null,
     organizer: organizer
       ? {
           id: organizer.id,
@@ -584,6 +587,7 @@ app.post('/api/v1/public/events', async (req, res) => {
     summary,
     description,
     countyId,
+    countyName,
     locationText,
     eventDate,
     startTime,
@@ -610,7 +614,8 @@ app.post('/api/v1/public/events', async (req, res) => {
   const normalizedEndTime = endTime || '14:00:00';
   const normalizedCapacity = Number(capacity) || 30;
   const normalizedPrice = Number(price) || 0;
-  const normalizedCountyId = Number(countyId) || 1;
+  let normalizedCountyId = Number(countyId) || null;
+  let resolvedCountyName = String(countyName || '').trim();
 
   const created = {
     id: uuidv4(),
@@ -620,7 +625,7 @@ app.post('/api/v1/public/events', async (req, res) => {
     slug: uniqueSlug,
     summary: normalizedSummary,
     description: normalizedDescription,
-    locationText: locationText || 'Nairobi',
+    locationText: String(locationText || '').trim() || resolvedCountyName || 'Unknown location',
     latitude: null,
     longitude: null,
     eventDate: normalizedEventDate,
@@ -637,6 +642,24 @@ app.post('/api/v1/public/events', async (req, res) => {
 
   try {
     if (config.databaseUrl) {
+      if (resolvedCountyName) {
+        const countyResult = await query(
+          'SELECT id, name FROM counties WHERE LOWER(name) = LOWER($1) LIMIT 1',
+          [resolvedCountyName],
+        );
+        if (!countyResult.rows[0]) {
+          return res.status(400).json({ success: false, message: `Unknown county: ${resolvedCountyName}.` });
+        }
+        normalizedCountyId = Number(countyResult.rows[0].id);
+        resolvedCountyName = countyResult.rows[0].name;
+        created.countyId = normalizedCountyId;
+        created.countyName = resolvedCountyName;
+      }
+
+      if (!normalizedCountyId) {
+        return res.status(400).json({ success: false, message: 'A valid county is required.' });
+      }
+
       const organizerId = await resolveEventOrganizerId();
       created.organizerId = organizerId;
 
@@ -671,6 +694,7 @@ app.post('/api/v1/public/events', async (req, res) => {
         id: row.id,
         organizerId: row.organizer_id,
         countyId: Number(row.county_id || normalizedCountyId),
+        countyName: resolvedCountyName || null,
         eventDate: row.event_date,
         startTime: row.start_time,
         endTime: row.end_time,
@@ -754,6 +778,49 @@ app.get('/api/v1/public/events/:id', async (req, res) => {
     return res.json({ success: true, data: buildPublicEvent(event) });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message || 'Unable to load event.' });
+  }
+});
+
+app.delete('/api/v1/admin/events/:id', authMiddleware, requireRoles('super_admin'), async (req, res) => {
+  const eventId = String(req.params.id || '').trim();
+  if (!isUuid(eventId)) {
+    return res.status(400).json({ success: false, message: 'Invalid event ID.' });
+  }
+
+  try {
+    if (config.databaseUrl) {
+      const deleteResult = await withTransaction(async (client) => {
+        await client.query('DELETE FROM event_likes WHERE event_id = $1', [eventId]);
+        await client.query('DELETE FROM event_images WHERE event_id = $1', [eventId]);
+        await client.query('DELETE FROM payments WHERE event_id = $1', [eventId]);
+        await client.query('DELETE FROM payouts WHERE event_id = $1', [eventId]);
+        await client.query('DELETE FROM bookings WHERE event_id = $1', [eventId]);
+        return client.query('DELETE FROM events WHERE id = $1 RETURNING id', [eventId]);
+      });
+
+      if (deleteResult.rows.length === 0) {
+        return res.status(404).json({ success: false, message: 'Event not found.' });
+      }
+    } else {
+      const eventIndex = events.findIndex((event) => event.id === eventId);
+      if (eventIndex < 0) {
+        return res.status(404).json({ success: false, message: 'Event not found.' });
+      }
+      events.splice(eventIndex, 1);
+    }
+
+    const eventIndex = events.findIndex((event) => event.id === eventId);
+    if (eventIndex >= 0) events.splice(eventIndex, 1);
+    for (let index = bookings.length - 1; index >= 0; index -= 1) {
+      if (bookings[index].eventId === eventId) bookings.splice(index, 1);
+    }
+    for (let index = payments.length - 1; index >= 0; index -= 1) {
+      if (payments[index].eventId === eventId) payments.splice(index, 1);
+    }
+
+    return res.json({ success: true, message: 'Event permanently deleted' });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || 'Unable to delete event.' });
   }
 });
 
@@ -908,11 +975,31 @@ app.post('/api/v1/auth/login', async (req, res) => {
   });
 });
 
-app.patch('/api/v1/admin/password/reset', authMiddleware, requireRoles('super_admin'), (req, res) => {
+app.patch('/api/v1/admin/password/reset', authMiddleware, requireRoles('super_admin'), async (req, res) => {
   const { currentPassword, newPassword } = req.body;
 
   if (!currentPassword || !newPassword) {
     return res.status(400).json({ success: false, message: 'Current password and new password are required.' });
+  }
+
+  if (config.databaseUrl) {
+    try {
+      const result = await query('SELECT id, email, password_hash FROM users WHERE id = $1 LIMIT 1', [req.user.sub]);
+      const admin = result.rows[0];
+      if (!admin) {
+        return res.status(404).json({ success: false, message: 'Superadmin account not found.' });
+      }
+      if (!bcrypt.compareSync(currentPassword, admin.password_hash)) {
+        return res.status(401).json({ success: false, message: 'Current password is incorrect.' });
+      }
+      if (String(newPassword).trim().length < 6) {
+        return res.status(400).json({ success: false, message: 'New password must be at least 6 characters long.' });
+      }
+      await query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [bcrypt.hashSync(String(newPassword), 10), admin.id]);
+      return res.json({ success: true, data: { message: 'Superadmin password updated successfully.', email: admin.email } });
+    } catch (error) {
+      return res.status(500).json({ success: false, message: error.message || 'Unable to update superadmin password.' });
+    }
   }
 
   const admin = users.find((user) => user.id === req.user.sub && user.role === 'super_admin');
@@ -940,6 +1027,43 @@ app.patch('/api/v1/admin/password/reset', authMiddleware, requireRoles('super_ad
   });
 });
 
+app.patch('/api/v1/admin/profile', authMiddleware, requireRoles('super_admin'), async (req, res) => {
+  const firstName = String(req.body?.firstName || '').trim();
+  const lastName = String(req.body?.lastName || '').trim();
+  if (!firstName || !lastName) {
+    return res.status(400).json({ success: false, message: 'First name and last name are required.' });
+  }
+
+  try {
+    if (config.databaseUrl) {
+      const result = await query(`
+        UPDATE users
+        SET first_name = $1, last_name = $2, updated_at = NOW()
+        WHERE id = $3
+        RETURNING id, first_name, last_name, email, phone
+      `, [firstName, lastName, req.user.sub]);
+      if (!result.rows[0]) {
+        return res.status(404).json({ success: false, message: 'Superadmin account not found.' });
+      }
+      const row = result.rows[0];
+      return res.json({
+        success: true,
+        data: { user: { id: row.id, firstName: row.first_name, lastName: row.last_name, email: row.email, phone: row.phone, role: 'super_admin' } },
+      });
+    }
+
+    const admin = users.find((user) => user.id === req.user.sub && user.role === 'super_admin');
+    if (!admin) {
+      return res.status(404).json({ success: false, message: 'Superadmin account not found.' });
+    }
+    admin.firstName = firstName;
+    admin.lastName = lastName;
+    return res.json({ success: true, data: { user: { id: admin.id, firstName, lastName, email: admin.email, phone: admin.phone, role: admin.role } } });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || 'Unable to update admin profile.' });
+  }
+});
+
 app.get('/api/v1/organizer/dashboard', authMiddleware, requireRoles('organizer'), (req, res) => {
   const organizerId = req.user.sub;
   const organizerEvents = events.filter((event) => event.organizerId === organizerId);
@@ -964,7 +1088,7 @@ app.get('/api/v1/organizer/dashboard', authMiddleware, requireRoles('organizer')
 });
 
 app.post('/api/v1/organizer/events', authMiddleware, requireRoles('organizer'), async (req, res) => {
-  const { title, summary, description, countyId, locationText, eventDate, startTime, endTime, price, capacity } = req.body;
+  const { title, summary, description, countyId, countyName, locationText, eventDate, startTime, endTime, price, capacity } = req.body;
 
   const normalizedTitle = String(title || '').trim() || 'Untitled Hike';
   const fallbackDescription = String(description || '').trim() || String(summary || '').trim() || String(title || '').trim() || 'Exciting hike with Twende Hike Kenya';
@@ -980,12 +1104,13 @@ app.post('/api/v1/organizer/events', authMiddleware, requireRoles('organizer'), 
   const event = {
     id: uuidv4(),
     organizerId: req.user.sub,
-    countyId: Number(countyId) || 1,
+    countyId: Number(countyId) || null,
+    countyName: String(countyName || '').trim() || null,
     title: normalizedTitle,
     slug: uniqueSlug,
     summary: normalizedSummary,
     description: normalizedDescription,
-    locationText: locationText || 'Unknown location',
+    locationText: String(locationText || '').trim() || String(countyName || '').trim() || 'Unknown location',
     eventDate: eventDate || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
     startTime: startTime || '06:00:00',
     endTime: endTime || '14:00:00',
@@ -998,6 +1123,20 @@ app.post('/api/v1/organizer/events', authMiddleware, requireRoles('organizer'), 
 
   try {
     if (config.databaseUrl) {
+      if (event.countyName) {
+        const countyResult = await query(
+          'SELECT id, name FROM counties WHERE LOWER(name) = LOWER($1) LIMIT 1',
+          [event.countyName],
+        );
+        if (!countyResult.rows[0]) {
+          return res.status(400).json({ success: false, message: `Unknown county: ${event.countyName}.` });
+        }
+        event.countyId = Number(countyResult.rows[0].id);
+        event.countyName = countyResult.rows[0].name;
+      }
+      if (!event.countyId) {
+        return res.status(400).json({ success: false, message: 'A valid county is required.' });
+      }
       const resolvedOrganizerId = await resolveEventOrganizerId(req.user.sub);
       const insert = await query(`
         INSERT INTO events (
