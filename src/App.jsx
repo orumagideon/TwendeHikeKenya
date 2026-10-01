@@ -17,13 +17,22 @@ const DEFAULT_HERO_SETTINGS = {
   heroBadge: "KENYA'S #1 TRAIL MARKETPLACE",
 }
 
+const safeSetItem = (key, value) => {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(key, value)
+  } catch (err) {
+    console.warn(`Could not save ${key} to localStorage:`, err)
+  }
+}
+
 const getClientLikeKey = () => {
   if (typeof window === 'undefined') return 'anonymous-user'
   try {
     const existing = window.localStorage.getItem('twendehike_client_key')
     if (existing) return existing
     const generated = `anon-${Math.random().toString(36).slice(2, 12)}-${Date.now().toString(36)}`
-    window.localStorage.setItem('twendehike_client_key', generated)
+    safeSetItem('twendehike_client_key', generated)
     return generated
   } catch (error) {
     return `anon-${Date.now().toString(36)}`
@@ -79,10 +88,8 @@ const readStorage = (key, fallback) => {
   }
 }
 
-const persistMarketplaceState = (nextHikes, nextApprovedHikes) => {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(STORAGE_KEYS.hikes, JSON.stringify(nextHikes))
-  window.localStorage.setItem(STORAGE_KEYS.approved, JSON.stringify(nextApprovedHikes))
+const persistMarketplaceState = () => {
+  // Events are fetched from the backend API, no need to cache large JSON with Base64 images
 }
 
 const getEffectiveTier = (hike) => {
@@ -390,7 +397,7 @@ function App() {
       phoneNumber: nextSession?.phoneNumber || '',
       emergencyContact: nextSession?.emergencyContact || '',
     })
-    localStorage.setItem('twendehike_hiker_session', JSON.stringify(nextSession))
+    safeSetItem('twendehike_hiker_session', JSON.stringify(nextSession))
 
     const accounts = getStoredHikerAccounts()
     const accountIndex = accounts.findIndex((account) => account.id === nextSession?.id)
@@ -402,7 +409,7 @@ function App() {
       } else {
         nextAccounts.unshift(nextSession)
       }
-      localStorage.setItem('twendehike_hiker_accounts', JSON.stringify(nextAccounts))
+      safeSetItem('twendehike_hiker_accounts', JSON.stringify(nextAccounts))
     }
   }
 
@@ -534,7 +541,7 @@ function App() {
     if (nextSession) {
       persistHikerSession(nextSession)
     } else if (typeof window !== 'undefined') {
-      localStorage.setItem('twendehike_hiker_profile', JSON.stringify(nextProfile))
+      safeSetItem('twendehike_hiker_profile', JSON.stringify(nextProfile))
     }
 
     showToast('Your hiker profile has been saved.')
@@ -608,7 +615,7 @@ function App() {
 
   useEffect(() => {
     document.body.classList.toggle('theme-dark', darkMode)
-    window.localStorage.setItem('twendehike_theme', darkMode ? 'dark' : 'light')
+    safeSetItem('twendehike_theme', darkMode ? 'dark' : 'light')
   }, [darkMode])
 
   useEffect(() => {
@@ -626,23 +633,13 @@ function App() {
   }, [pendingHikes])
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEYS.approved, JSON.stringify(approvedHikes))
-  }, [approvedHikes])
-
-  useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEYS.removed, JSON.stringify(removedHikes))
-  }, [removedHikes])
-
-  useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEYS.completed, JSON.stringify(completedHikes))
-  }, [completedHikes])
-
-  useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEYS.hikes, JSON.stringify(hikes))
-  }, [hikes])
-
-  useEffect(() => {
     const demoTitles = ['Ngong Hills Sunrise Hike', 'Menengai Crater Loop']
+    try {
+      localStorage.removeItem('twendehike_approved_hikes')
+      localStorage.removeItem('twendehike_events')
+    } catch (e) {
+      // Ignore
+    }
     Object.values(STORAGE_KEYS).forEach((key) => {
       try {
         const storedValue = window.localStorage.getItem(key)
@@ -692,7 +689,6 @@ function App() {
 
         setHikes(mergedHikes)
         setApprovedHikes(mergedHikes)
-        persistMarketplaceState(mergedHikes, mergedHikes)
 
         if (hikerSession) {
           setUserBookings(hikerSession.bookings || [])
@@ -715,7 +711,6 @@ function App() {
         const persistedHikes = (safeFallbackApproved.length ? safeFallbackApproved : safeFallbackHikes).map((item, index) => normalizeEvent(item, index))
         setHikes(persistedHikes)
         setApprovedHikes(persistedHikes)
-        persistMarketplaceState(persistedHikes, persistedHikes)
         showToast(error.message || 'Unable to load trail marketplace.')
       } finally {
         setAuthLoading(false)
@@ -1358,7 +1353,7 @@ function App() {
       setLikedHikes((prev) => {
         const next = hasLiked ? [...new Set([...prev, hikeId])] : prev.filter((item) => item !== hikeId)
         if (typeof window !== 'undefined') {
-          localStorage.setItem('twendehike_liked_hikes', JSON.stringify(next))
+          safeSetItem('twendehike_liked_hikes', JSON.stringify(next))
         }
         return next
       })
