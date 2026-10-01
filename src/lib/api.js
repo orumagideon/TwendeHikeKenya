@@ -92,6 +92,8 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
+  getAdminEvents: () => request('/admin/events'),
+
   deleteEvent: (eventId) =>
     request(`/admin/events/${eventId}`, {
       method: 'DELETE',
@@ -100,6 +102,14 @@ export const api = {
   updateAdminSettings: (payload) =>
     request('/admin/settings', {
       method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
+  getHeroSettings: () => request('/public/settings/hero'),
+
+  updateHeroSettings: (payload) =>
+    request('/admin/settings/hero', {
+      method: 'PUT',
       body: JSON.stringify(payload),
     }),
 

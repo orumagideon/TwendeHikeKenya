@@ -11,8 +11,10 @@ const DEFAULT_EVENT_IMAGE = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.or
 
 const DEFAULT_HERO_SETTINGS = {
   heroImageUrl: '',
-  heroOverlayColor: '#062d1f',
+  heroOverlayColor: '#064e3b',
   heroHeadline: 'Conquer the Aberdares, Longonot & Mt. Kenya.',
+  heroSubtitle: 'Verified trail captains, licensed KWS rangers, pickup from Nairobi CBD, and seamless booking with Lipa na M-PESA.',
+  heroBadge: "KENYA'S #1 TRAIL MARKETPLACE",
 }
 
 const getClientLikeKey = () => {
@@ -275,6 +277,7 @@ function App() {
   const [adminMessage, setAdminMessage] = useState('')
   const [heroSettings, setHeroSettings] = useState(DEFAULT_HERO_SETTINGS)
   const [heroSettingsForm, setHeroSettingsForm] = useState(DEFAULT_HERO_SETTINGS)
+  const [adminEvents, setAdminEvents] = useState([])
   const overlayHistoryRef = useRef(false)
 
   const showToast = (message) => {
@@ -311,6 +314,20 @@ function App() {
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
+
+  useEffect(() => {
+    if (activeView !== 'admin' || authUser?.role !== 'super_admin') return
+
+    api.getAdminEvents()
+      .then((response) => {
+        const allEvents = Array.isArray(response?.data) ? response.data.map((event, index) => normalizeEvent(event, index)) : []
+        setAdminEvents(allEvents)
+        setPendingHikes(allEvents.filter((event) => event.status === 'pending_approval'))
+        setApprovedHikes(allEvents.filter((event) => ['approved', 'published'].includes(event.status)))
+        setHikes(allEvents.filter((event) => ['approved', 'published'].includes(event.status)))
+      })
+      .catch((error) => setAdminMessage(error.message || 'Unable to load admin events.'))
+  }, [activeView, authUser])
 
   const getStoredHikerAccounts = () => {
     if (typeof window === 'undefined') return []
@@ -617,9 +634,17 @@ function App() {
 
         const [eventsResult, settingsResult] = await Promise.all([
           api.getPublicEvents(),
-          api.getPublicSettings().catch(() => ({ data: DEFAULT_HERO_SETTINGS })),
+          api.getHeroSettings().catch(() => ({ data: DEFAULT_HERO_SETTINGS })),
         ])
-        const loadedSettings = settingsResult?.data || DEFAULT_HERO_SETTINGS
+        const heroData = settingsResult?.data || {}
+        const loadedSettings = {
+          ...DEFAULT_HERO_SETTINGS,
+          heroHeadline: heroData.title || heroData.heroHeadline || DEFAULT_HERO_SETTINGS.heroHeadline,
+          heroSubtitle: heroData.subtitle || heroData.heroSubtitle || DEFAULT_HERO_SETTINGS.heroSubtitle,
+          heroBadge: heroData.badge || heroData.heroBadge || DEFAULT_HERO_SETTINGS.heroBadge,
+          heroImageUrl: heroData.bg_image || heroData.heroImageUrl || DEFAULT_HERO_SETTINGS.heroImageUrl,
+          heroOverlayColor: heroData.bg_color || heroData.heroOverlayColor || DEFAULT_HERO_SETTINGS.heroOverlayColor,
+        }
         setHeroSettings({ ...DEFAULT_HERO_SETTINGS, ...loadedSettings })
         setHeroSettingsForm({ ...DEFAULT_HERO_SETTINGS, ...loadedSettings })
         const eventList = Array.isArray(eventsResult?.data) ? eventsResult.data : []
@@ -756,7 +781,7 @@ function App() {
   }
 
   const closeTicketModal = () => {
-    closeTicketModal()
+    setTicketModal(null)
     closeOverlayHistory()
   }
 
@@ -1438,13 +1463,27 @@ function App() {
     event.preventDefault()
 
     try {
-      const response = await api.updateAdminSettings(heroSettingsForm)
+      const response = await api.updateHeroSettings({
+        title: heroSettingsForm.heroHeadline,
+        subtitle: heroSettingsForm.heroSubtitle,
+        badge: heroSettingsForm.heroBadge,
+        bg_image: heroSettingsForm.heroImageUrl,
+        bg_color: heroSettingsForm.heroOverlayColor,
+      })
       const updatedSettings = response?.data
       if (!response?.success || !updatedSettings) {
         throw new Error(response?.message || 'Unable to update hero settings.')
       }
-      setHeroSettings({ ...DEFAULT_HERO_SETTINGS, ...updatedSettings })
-      setHeroSettingsForm({ ...DEFAULT_HERO_SETTINGS, ...updatedSettings })
+      const nextSettings = {
+        ...DEFAULT_HERO_SETTINGS,
+        heroHeadline: updatedSettings.title || DEFAULT_HERO_SETTINGS.heroHeadline,
+        heroSubtitle: updatedSettings.subtitle || DEFAULT_HERO_SETTINGS.heroSubtitle,
+        heroBadge: updatedSettings.badge || DEFAULT_HERO_SETTINGS.heroBadge,
+        heroImageUrl: updatedSettings.bg_image || '',
+        heroOverlayColor: updatedSettings.bg_color || DEFAULT_HERO_SETTINGS.heroOverlayColor,
+      }
+      setHeroSettings(nextSettings)
+      setHeroSettingsForm(nextSettings)
       showToast('Hero banner settings updated.')
     } catch (error) {
       setAdminMessage(error.message || 'Unable to update hero settings.')
@@ -1555,10 +1594,10 @@ function App() {
               } : undefined}
             >
               <div className="hero-content">
-                <div className="hero-pill">Kenya's #1 Trail Marketplace</div>
+                <div className="hero-pill">{heroSettings.heroBadge || DEFAULT_HERO_SETTINGS.heroBadge}</div>
                 <h1>{heroSettings.heroHeadline || DEFAULT_HERO_SETTINGS.heroHeadline}</h1>
                 <p>
-                  Verified trail captains, licensed KWS rangers, pickup from Nairobi CBD, and seamless booking with <span className="highlight">Lipa na M-PESA</span>.
+                  {heroSettings.heroSubtitle || DEFAULT_HERO_SETTINGS.heroSubtitle}
                 </p>
 
                 <div className="tag-row filter-pills-container">
@@ -2264,15 +2303,45 @@ function App() {
                 </div>
               </div>
 
+              <div className="admin-queue admin-events-list">
+                <h3>All Event Listings</h3>
+                {adminEvents.length === 0 ? <p className="empty-inline">No event listings found.</p> : adminEvents.map((event) => (
+                  <div key={`all-event-${event.id}`} className="queue-item">
+                    <div>
+                      <strong>{event.title}</strong>
+                      <p>{event.county} County • {event.status} • {event.date || 'Upcoming'}</p>
+                    </div>
+                    <span className="status-pill">{event.status}</span>
+                  </div>
+                ))}
+              </div>
+
               <div className="admin-reset-box hero-settings-panel">
                 <h3>Hero Banner Settings</h3>
                 <form onSubmit={handleHeroSettingsUpdate} className="create-form">
+                  <div className="field-group">
+                    <label>Hero Badge Text</label>
+                    <input
+                      value={heroSettingsForm.heroBadge}
+                      onChange={(event) => setHeroSettingsForm((prev) => ({ ...prev, heroBadge: event.target.value }))}
+                      placeholder="KENYA'S #1 TRAIL MARKETPLACE"
+                    />
+                  </div>
                   <div className="field-group">
                     <label>Hero Headline</label>
                     <input
                       value={heroSettingsForm.heroHeadline}
                       onChange={(event) => setHeroSettingsForm((prev) => ({ ...prev, heroHeadline: event.target.value }))}
                       placeholder="Conquer the Aberdares, Longonot & Mt. Kenya."
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label>Hero Subtitle</label>
+                    <textarea
+                      rows="3"
+                      value={heroSettingsForm.heroSubtitle}
+                      onChange={(event) => setHeroSettingsForm((prev) => ({ ...prev, heroSubtitle: event.target.value }))}
+                      placeholder="Verified trail captains and seamless booking with Lipa na M-PESA."
                     />
                   </div>
                   <div className="field-group">

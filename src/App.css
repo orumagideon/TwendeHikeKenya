@@ -1568,6 +1568,12 @@ th {
   padding: 1.4rem;
 }
 
+.admin-events-list {
+  max-height: 34rem;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .admin-header {
   display: flex;
   align-items: center;

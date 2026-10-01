@@ -241,6 +241,12 @@ async function ensureDatabaseSchema() {
       hero_headline TEXT NOT NULL DEFAULT 'Conquer the Aberdares, Longonot & Mt. Kenya.',
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
+    `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS key VARCHAR(50)`,
+    `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS value JSONB`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS site_settings_key_unique ON site_settings(key) WHERE key IS NOT NULL`,
+    `INSERT INTO site_settings (id, key, value)
+     VALUES (1, 'hero', '{"title":"Conquer the Aberdares, Longonot & Mt. Kenya.","subtitle":"Verified trail captains, licensed KWS rangers, pickup from Nairobi CBD, and seamless booking with Lipa na M-PESA.","badge":"KENYA''S #1 TRAIL MARKETPLACE","bg_image":"","bg_color":"#064e3b"}'::jsonb)
+     ON CONFLICT (id) DO UPDATE SET key = COALESCE(site_settings.key, EXCLUDED.key), value = COALESCE(site_settings.value, EXCLUDED.value)`,
     `CREATE TABLE IF NOT EXISTS events (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       organizer_id UUID NOT NULL,
@@ -495,6 +501,24 @@ app.get('/api/v1/public/settings', async (_req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message || 'Unable to load site settings.' });
+  }
+});
+
+app.get('/api/v1/public/settings/hero', async (_req, res) => {
+  const fallback = {
+    title: 'Conquer the Aberdares, Longonot & Mt. Kenya.',
+    subtitle: 'Verified trail captains, licensed KWS rangers, pickup from Nairobi CBD, and seamless booking with Lipa na M-PESA.',
+    badge: "KENYA'S #1 TRAIL MARKETPLACE",
+    bg_image: '',
+    bg_color: '#064e3b',
+  };
+
+  try {
+    if (!config.databaseUrl) return res.json({ success: true, data: fallback });
+    const result = await query('SELECT value FROM site_settings WHERE key = $1 LIMIT 1', ['hero']);
+    return res.json({ success: true, data: { ...fallback, ...(result.rows[0]?.value || {}) } });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || 'Unable to load hero settings.' });
   }
 });
 
@@ -1231,6 +1255,29 @@ app.patch('/api/v1/admin/settings', authMiddleware, requireRoles('super_admin'),
   }
 });
 
+app.put('/api/v1/admin/settings/hero', authMiddleware, requireRoles('super_admin'), async (req, res) => {
+  const value = {
+    title: String(req.body?.title || '').trim() || 'Conquer the Aberdares, Longonot & Mt. Kenya.',
+    subtitle: String(req.body?.subtitle || '').trim() || 'Verified trail captains, licensed KWS rangers, pickup from Nairobi CBD, and seamless booking with Lipa na M-PESA.',
+    badge: String(req.body?.badge || '').trim() || "KENYA'S #1 TRAIL MARKETPLACE",
+    bg_image: String(req.body?.bg_image || '').trim(),
+    bg_color: String(req.body?.bg_color || '#064e3b').trim(),
+  };
+
+  try {
+    if (!config.databaseUrl) return res.json({ success: true, data: value });
+    const result = await query(`
+      INSERT INTO site_settings (key, value, updated_at)
+      VALUES ('hero', $1::jsonb, NOW())
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+      RETURNING key, value
+    `, [JSON.stringify(value)]);
+    return res.json({ success: true, data: { key: result.rows[0].key, ...result.rows[0].value } });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || 'Unable to update hero settings.' });
+  }
+});
+
 app.get('/api/v1/organizer/dashboard', authMiddleware, requireRoles('organizer'), (req, res) => {
   const organizerId = req.user.sub;
   const organizerEvents = events.filter((event) => event.organizerId === organizerId);
@@ -1393,6 +1440,32 @@ app.get('/api/v1/organizer/events/:id/manifest', authMiddleware, requireRoles('o
 app.get('/api/v1/admin/events/pending', authMiddleware, requireRoles('super_admin'), (_req, res) => {
   const pending = events.filter((event) => event.status === 'pending_approval');
   return res.json({ success: true, data: pending.map(buildPublicEvent) });
+});
+
+app.get('/api/v1/admin/events', authMiddleware, requireRoles('super_admin'), async (_req, res) => {
+  try {
+    if (!config.databaseUrl) {
+      return res.json({ success: true, data: events.map(buildPublicEvent) });
+    }
+    const result = await query(`
+      SELECT e.*, c.name AS county_name
+      FROM events e
+      LEFT JOIN counties c ON c.id = e.county_id
+      ORDER BY e.created_at DESC
+    `);
+    const data = result.rows.map((row) => buildPublicEvent({
+      ...row,
+      organizerId: row.organizer_id,
+      countyId: row.county_id,
+      countyName: row.county_name,
+      eventDate: row.event_date,
+      startTime: row.start_time,
+      locationText: row.location_text,
+    }));
+    return res.json({ success: true, data });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || 'Unable to load admin events.' });
+  }
 });
 
 app.patch('/api/v1/admin/events/:id/review', authMiddleware, requireRoles('super_admin'), async (req, res) => {
