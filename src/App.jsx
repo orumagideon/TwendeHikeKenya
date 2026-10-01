@@ -1231,10 +1231,29 @@ function App() {
     showToast('Host request submitted for admin approval.')
   }
 
-  const rejectHikeListing = (index) => {
+  const rejectHikeListing = async (index) => {
     const rejected = pendingHikes[index]
-    setPendingHikes((prev) => prev.filter((_, i) => i !== index))
-    showToast(`Listing '${rejected.title}' was rejected.`)
+    if (!rejected) return
+
+    const validEventId = typeof rejected.id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rejected.id)
+    if (!validEventId) {
+      showToast('This hike has no valid database ID. Cannot reject.')
+      return
+    }
+
+    try {
+      const reviewResponse = await api.reviewEvent(rejected.id, { decision: 'rejected', notes: 'Rejected by superadmin' })
+      const persistedEvent = reviewResponse?.data || reviewResponse
+      if (!persistedEvent?.id) {
+        throw new Error('Failed to persist rejection to database')
+      }
+
+      setPendingHikes((prev) => prev.filter((_, i) => i !== index))
+      setAdminEvents((prev) => prev.filter((item) => item.id !== rejected.id))
+      showToast(`Listing '${rejected.title}' was rejected and removed.`)
+    } catch (error) {
+      showToast(error.message || 'Unable to reject this hike.')
+    }
   }
 
   const deleteEventFromAdmin = async (target) => {
