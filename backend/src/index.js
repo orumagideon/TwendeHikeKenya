@@ -262,6 +262,13 @@ async function ensureDatabaseSchema() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
+    `ALTER TABLE events ADD COLUMN IF NOT EXISTS meeting_point TEXT`,
+    `ALTER TABLE events ADD COLUMN IF NOT EXISTS pickup_time VARCHAR(50)`,
+    `ALTER TABLE events ADD COLUMN IF NOT EXISTS google_map_url TEXT`,
+    `ALTER TABLE events ADD COLUMN IF NOT EXISTS inclusions JSONB DEFAULT '[]'::jsonb`,
+    `ALTER TABLE events ADD COLUMN IF NOT EXISTS organizer_phone VARCHAR(50)`,
+    `ALTER TABLE events ADD COLUMN IF NOT EXISTS organizer_email VARCHAR(120)`,
+    `ALTER TABLE events ADD COLUMN IF NOT EXISTS organizer_name VARCHAR(200)`,
     `CREATE TABLE IF NOT EXISTS event_images (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       event_id UUID NOT NULL,
@@ -399,11 +406,18 @@ function buildPublicEvent(event) {
   const photos = Array.isArray(event.photos) ? event.photos : [];
   const image = photos[0] || event.cover_image || event.coverImage || event.image || null;
   const countyName = event.county?.name || event.countyName || event.county_name || null;
+  const inclusions = parseInclusions(event.inclusions);
 
   return {
     ...event,
     photos,
     image,
+    meetingPoint: event.meetingPoint || event.meeting_point || event.locationText || event.location_text || '',
+    pickupTime: event.pickupTime || event.pickup_time || event.startTime || event.start_time || '05:30 AM',
+    googleMapUrl: event.googleMapUrl || event.google_map_url || '',
+    inclusions,
+    organizerPhone: event.organizerPhone || event.organizer_phone || '',
+    organizerEmail: event.organizerEmail || event.organizer_email || '',
     likesCount,
     interestCount: likesCount,
     county: countyName
@@ -418,8 +432,21 @@ function buildPublicEvent(event) {
           role: organizer.role
         }
       : null,
-    organizerName: organizer ? `${organizer.firstName} ${organizer.lastName}` : 'Twende Hike Kenya'
+    organizerName: event.organizerName || event.organizer_name || (organizer ? `${organizer.firstName} ${organizer.lastName}` : 'Twende Hike Kenya')
   };
+}
+
+function parseInclusions(value) {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+    } catch (_error) {
+      return value.trim() ? [value.trim()] : [];
+    }
+  }
+  return [];
 }
 
 function signToken(user) {
@@ -496,6 +523,13 @@ app.get('/api/v1/public/events', async (req, res) => {
           eventDate: row.event_date,
           startTime: row.start_time,
           endTime: row.end_time,
+          meetingPoint: row.meeting_point || row.location_text || '',
+          pickupTime: row.pickup_time || row.start_time || '05:30 AM',
+          googleMapUrl: row.google_map_url || '',
+          inclusions: parseInclusions(row.inclusions),
+          organizerPhone: row.organizer_phone || '',
+          organizerEmail: row.organizer_email || '',
+          organizerName: row.organizer_name || 'Twende Host',
           price: Number(row.price || 0),
           capacity: Number(row.capacity || 0),
           bookedSlots: Number(row.booked_slots || 0),
@@ -622,6 +656,13 @@ app.post('/api/v1/public/events', async (req, res) => {
     countyId,
     countyName,
     locationText,
+    meetingPoint,
+    pickupTime,
+    googleMapUrl,
+    inclusions = [],
+    organizerPhone,
+    organizerEmail,
+    organizerName,
     eventDate,
     startTime,
     endTime,
@@ -649,6 +690,13 @@ app.post('/api/v1/public/events', async (req, res) => {
   const normalizedPrice = Number(price) || 0;
   let normalizedCountyId = Number(countyId) || null;
   let resolvedCountyName = String(countyName || '').trim();
+  const normalizedMeetingPoint = String(meetingPoint || locationText || '').trim();
+  const normalizedPickupTime = String(pickupTime || startTime || '').trim();
+  const normalizedGoogleMapUrl = String(googleMapUrl || '').trim();
+  const normalizedInclusions = parseInclusions(inclusions);
+  const normalizedOrganizerPhone = String(organizerPhone || '').trim();
+  const normalizedOrganizerEmail = String(organizerEmail || '').trim();
+  const normalizedOrganizerName = String(organizerName || '').trim();
 
   const created = {
     id: uuidv4(),
@@ -659,6 +707,13 @@ app.post('/api/v1/public/events', async (req, res) => {
     summary: normalizedSummary,
     description: normalizedDescription,
     locationText: String(locationText || '').trim() || resolvedCountyName || 'Unknown location',
+    meetingPoint: normalizedMeetingPoint || String(locationText || '').trim() || resolvedCountyName || '',
+    pickupTime: normalizedPickupTime,
+    googleMapUrl: normalizedGoogleMapUrl,
+    inclusions: normalizedInclusions,
+    organizerPhone: normalizedOrganizerPhone,
+    organizerEmail: normalizedOrganizerEmail,
+    organizerName: normalizedOrganizerName,
     latitude: null,
     longitude: null,
     eventDate: normalizedEventDate,
@@ -706,9 +761,10 @@ app.post('/api/v1/public/events', async (req, res) => {
       const insert = await query(
         `INSERT INTO events (
           organizer_id, county_id, title, slug, summary, description, location_text,
+          meeting_point, pickup_time, google_map_url, inclusions, organizer_phone, organizer_email, organizer_name,
           event_date, start_time, end_time, price, capacity, booked_slots, available_slots, status,
           created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW()) RETURNING *`,
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, NOW(), NOW()) RETURNING *`,
         [
           organizerId,
           normalizedCountyId,
@@ -717,6 +773,13 @@ app.post('/api/v1/public/events', async (req, res) => {
           normalizedSummary,
           normalizedDescription,
           created.locationText,
+          created.meetingPoint,
+          created.pickupTime,
+          created.googleMapUrl,
+          JSON.stringify(created.inclusions),
+          created.organizerPhone,
+          created.organizerEmail,
+          created.organizerName,
           normalizedEventDate,
           normalizedStartTime,
           normalizedEndTime,
@@ -735,6 +798,13 @@ app.post('/api/v1/public/events', async (req, res) => {
         organizerId: row.organizer_id,
         countyId: Number(row.county_id || normalizedCountyId),
         countyName: resolvedCountyName || null,
+          meetingPoint: row.meeting_point || created.meetingPoint,
+          pickupTime: row.pickup_time || created.pickupTime,
+          googleMapUrl: row.google_map_url || created.googleMapUrl,
+          inclusions: parseInclusions(row.inclusions ?? created.inclusions),
+          organizerPhone: row.organizer_phone || created.organizerPhone,
+          organizerEmail: row.organizer_email || created.organizerEmail,
+          organizerName: row.organizer_name || created.organizerName,
         eventDate: row.event_date,
         startTime: row.start_time,
         endTime: row.end_time,
@@ -1128,7 +1198,11 @@ app.get('/api/v1/organizer/dashboard', authMiddleware, requireRoles('organizer')
 });
 
 app.post('/api/v1/organizer/events', authMiddleware, requireRoles('organizer'), async (req, res) => {
-  const { title, summary, description, countyId, countyName, locationText, eventDate, startTime, endTime, price, capacity } = req.body;
+  const {
+    title, summary, description, countyId, countyName, locationText, meetingPoint, pickupTime,
+    googleMapUrl, inclusions = [], organizerPhone, organizerEmail, organizerName,
+    eventDate, startTime, endTime, price, capacity,
+  } = req.body;
 
   const normalizedTitle = String(title || '').trim() || 'Untitled Hike';
   const fallbackDescription = String(description || '').trim() || String(summary || '').trim() || String(title || '').trim() || 'Exciting hike with Twende Hike Kenya';
@@ -1151,6 +1225,13 @@ app.post('/api/v1/organizer/events', authMiddleware, requireRoles('organizer'), 
     summary: normalizedSummary,
     description: normalizedDescription,
     locationText: String(locationText || '').trim() || String(countyName || '').trim() || 'Unknown location',
+    meetingPoint: String(meetingPoint || locationText || '').trim(),
+    pickupTime: String(pickupTime || startTime || '').trim(),
+    googleMapUrl: String(googleMapUrl || '').trim(),
+    inclusions: parseInclusions(inclusions),
+    organizerPhone: String(organizerPhone || '').trim(),
+    organizerEmail: String(organizerEmail || '').trim(),
+    organizerName: String(organizerName || '').trim(),
     eventDate: eventDate || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
     startTime: startTime || '06:00:00',
     endTime: endTime || '14:00:00',
@@ -1181,9 +1262,10 @@ app.post('/api/v1/organizer/events', authMiddleware, requireRoles('organizer'), 
       const insert = await query(`
         INSERT INTO events (
           organizer_id, county_id, title, slug, summary, description, location_text,
+          meeting_point, pickup_time, google_map_url, inclusions, organizer_phone, organizer_email, organizer_name,
           event_date, start_time, end_time, price, capacity, booked_slots, available_slots, status,
           created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, NOW(), NOW())
         RETURNING *
       `, [
         resolvedOrganizerId,
@@ -1193,6 +1275,13 @@ app.post('/api/v1/organizer/events', authMiddleware, requireRoles('organizer'), 
         event.summary,
         event.description,
         event.locationText,
+        event.meetingPoint,
+        event.pickupTime,
+        event.googleMapUrl,
+        JSON.stringify(event.inclusions),
+        event.organizerPhone,
+        event.organizerEmail,
+        event.organizerName,
         event.eventDate,
         event.startTime,
         event.endTime,

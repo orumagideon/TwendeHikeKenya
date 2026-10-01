@@ -120,24 +120,24 @@ const normalizeEvent = (event, index = 0) => {
     elevation: event.elevation || '1,800 m',
     duration: event.duration || '4 - 5 Hours',
     departure: event.departure || '5:30 AM Nairobi CBD',
-    pickup: event.pickup || event.locationText || 'Nairobi CBD meeting point',
+    pickup: event.meetingPoint || event.pickup || event.locationText || '',
+    meetingPoint: event.meetingPoint || event.pickup || event.locationText || '',
+    pickupTime: event.pickupTime || event.departure || event.startTime || '05:30 AM',
     googleMapUrl: event.googleMapUrl || event.mapUrl || '',
     date: event.eventDate || event.date || new Date().toISOString(),
     image: event.image || event.photos?.[0] || event.images?.[0] || DEFAULT_EVENT_IMAGE,
     photos: event.photos?.length ? event.photos : (event.images?.length ? event.images : []),
     organizer: organizerName,
-    organizerName: organizerName,
+    organizerName: event.organizerName || organizerName,
+    organizerPhone: event.organizerPhone || '',
+    organizerEmail: event.organizerEmail || '',
     organizerRating,
     interestCount,
     totalRatings: Number(event.totalRatings || 0),
     visibleName: event.visibleName ?? true,
     verified: event.verified ?? true,
     description: event.summary || event.description || 'A scenic adventure designed for unforgettable outdoor experiences in Kenya.',
-    inclusions: event.inclusions || [
-      'Overland transport from Nairobi',
-      'Certified trail leader',
-      'Safety briefing and first aid support',
-    ],
+    inclusions: Array.isArray(event.inclusions) && event.inclusions.length ? event.inclusions : DEFAULT_INCLUSIONS,
     gear: event.gear || ['Hiking boots', 'Water bottle', 'Light rain jacket'],
     tiers: event.tiers || [{ name: 'Standard Hiker', price: Number(event.price || 0), active: true, note: 'Standard Fare' }],
     price: Number(event.price || 0),
@@ -875,11 +875,14 @@ function App() {
     const earlyPrice = Number(form.newPriceEarly?.value || 0)
     const standardPrice = Number(form.newPriceStd?.value || 0)
     const pickup = (form.newPickup?.value || '').trim()
+    const pickupTime = (form.newPickupTime?.value || '').trim()
     const googleMapUrl = (form.newMapUrl?.value || '').trim()
     const description = (form.newDesc?.value || '').trim()
     const summary = description || title || 'Exciting hike with Twende Hike Kenya'
     const maxTickets = Number(form.newMaxTickets?.value || 0)
     const publicHostName = (form.newHostName?.value || '').trim() || 'Kenyan Explorer'
+    const organizerPhone = (form.newOrganizerPhone?.value || '').trim()
+    const organizerEmail = (form.newOrganizerEmail?.value || '').trim()
     const additionalTicketsNeeded = Number(form.newAdditionalTickets?.value || 0)
     const customPackageName = (form.newCustomPackageName?.value || '').trim()
     const customPackagePrice = Number(form.newCustomPackagePrice?.value || 0)
@@ -920,12 +923,16 @@ function App() {
       duration: '7 - 8 Hours',
       departure: '5:30 AM Nairobi',
       pickup,
+      meetingPoint: pickup,
+      pickupTime: pickupTime || '05:30 AM',
       googleMapUrl,
       date,
       image: selectedPhotos[0] || DEFAULT_EVENT_IMAGE,
       photos: selectedPhotos,
       organizer: publicHostName,
       organizerName: publicHostName,
+      organizerPhone,
+      organizerEmail,
       organizerRating: 4.9,
       interestCount: 0,
       visibleName: true,
@@ -949,6 +956,10 @@ function App() {
         countyId,
         countyName: countyValue,
         locationText: pickup,
+        meetingPoint: pickup,
+        pickupTime: pickupTime || '05:30 AM',
+        googleMapUrl,
+        inclusions: selectedInclusions,
         eventDate: date || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
         startTime: '05:30:00',
         endTime: '13:00:00',
@@ -956,6 +967,8 @@ function App() {
         capacity: Number(maxTickets) || 30,
         status: 'pending_approval',
         organizerName: publicHostName,
+        organizerPhone,
+        organizerEmail,
         images: uploadedEventImages,
         tiers: customTiers,
       })
@@ -2320,7 +2333,7 @@ function App() {
                 </div>
                 <div>
                   <span>Departure</span>
-                  <strong>{eventModal.departure}</strong>
+                  <strong>{eventModal.pickupTime || eventModal.departure || '05:30 AM'}</strong>
                 </div>
               </div>
 
@@ -2343,8 +2356,10 @@ function App() {
               <div className="modal-section">
                 <h4>What’s Included</h4>
                 <ul className="info-list">
-                  {eventModal.inclusions.map((item) => (
-                    <li key={item}>{item}</li>
+                  {(eventModal.inclusions?.length ? eventModal.inclusions : DEFAULT_INCLUSIONS).map((item, index) => (
+                    <li key={`${typeof item === 'string' ? item : item?.name || item?.label || index}-${index}`}>
+                      ✓ {typeof item === 'string' ? item : item?.name || item?.label || item?.title || String(item)}
+                    </li>
                   ))}
                 </ul>
               </div>
@@ -2360,12 +2375,26 @@ function App() {
 
               <div className="modal-section">
                 <h4>Meeting &amp; Pickup Point</h4>
-                <p className="pickup-note">📍 {eventModal.pickup}</p>
+                <p className="pickup-note">📍 {eventModal.meetingPoint || eventModal.pickup || eventModal.locationText}</p>
+                <p className="pickup-note">🕒 {eventModal.pickupTime || eventModal.departure || '05:30 AM'}</p>
                 {eventModal.googleMapUrl && (
-                  <a className="map-link" href={eventModal.googleMapUrl} target="_blank" rel="noreferrer">
-                    Open Google Maps location
+                  <a className="map-link" href={eventModal.googleMapUrl} target="_blank" rel="noopener noreferrer">
+                    View on Google Maps
                   </a>
                 )}
+              </div>
+
+              <div className="modal-section organizer-contact-card">
+                <h4>Host &amp; Organizer Contact</h4>
+                <p><strong>{eventModal.organizerName || eventModal.organizer}</strong>{eventModal.verified && <span className="verified-dot"> ✓ Verified</span>}</p>
+                {eventModal.organizerPhone && (
+                  <p>
+                    <a href={`tel:${eventModal.organizerPhone}`}>📞 {eventModal.organizerPhone}</a>
+                    {' '}
+                    <a href={`https://wa.me/${String(eventModal.organizerPhone).replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer">WhatsApp</a>
+                  </p>
+                )}
+                {eventModal.organizerEmail && <p><a href={`mailto:${eventModal.organizerEmail}`}>✉️ {eventModal.organizerEmail}</a></p>}
               </div>
 
               <div className="tier-section">
@@ -2688,18 +2717,34 @@ function App() {
               </div>
 
               <div className="field-group">
-                <label>Public Host Name</label>
+                <label>Host / Organization Display Name</label>
                 <input name="newHostName" placeholder="Kenyan Explorer" />
               </div>
 
+              <div className="split-fields">
+                <div className="field-group">
+                  <label>Organizer Phone / WhatsApp</label>
+                  <input name="newOrganizerPhone" type="tel" placeholder="+254 712 345 678" />
+                </div>
+                <div className="field-group">
+                  <label>Organizer Email</label>
+                  <input name="newOrganizerEmail" type="email" placeholder="host@example.com" />
+                </div>
+              </div>
+
               <div className="field-group">
-                <label>Pickup Meeting Point in Nairobi</label>
-                <input name="newPickup" required placeholder="e.g. Nairobi CBD / Nairobi National Park Gate" />
+                <label>Meeting &amp; Pickup Location</label>
+                <input name="newPickup" required placeholder="e.g. Bata Hilton, Nairobi CBD" />
+              </div>
+
+              <div className="field-group">
+                <label>Pickup / Departure Time</label>
+                <input name="newPickupTime" placeholder="e.g. 04:45 AM" />
               </div>
 
               <div className="field-group">
                 <label>Google Maps Link for Meeting Point</label>
-                <input name="newMapUrl" type="url" placeholder="https://maps.google.com/?q=Nairobi CBD" />
+                <input name="newMapUrl" type="url" placeholder="https://maps.app.goo.gl/..." />
               </div>
 
               <div className="field-group">
