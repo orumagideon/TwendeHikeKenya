@@ -2857,8 +2857,8 @@ th {
 
   .header-theme-toggle {
     display: inline-flex;
-    width: 2.25rem;
-    height: 2.25rem;
+    width: 3rem;
+    height: 3rem;
     align-items: center;
     justify-content: center;
     padding: 0;
@@ -2878,8 +2878,8 @@ th {
 
   .mobile-menu-toggle {
     display: inline-flex;
-    width: 2.25rem;
-    height: 2.25rem;
+    width: 3rem;
+    height: 3rem;
     align-items: center;
     justify-content: center;
     padding: 0;
@@ -2887,7 +2887,8 @@ th {
     border-radius: 0.7rem;
     background: transparent;
     color: #0d4a2b;
-    font-size: 1.25rem;
+    font-size: 1.5rem;
+    font-weight: 800;
   }
 
   .mobile-menu-sheet {

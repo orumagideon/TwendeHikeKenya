@@ -12,7 +12,8 @@ import { query, withTransaction } from './lib/db.js';
 
 const app = express();
 app.use(compression());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use((req, res, next) => {
   const origin = req.headers.origin || '*';
   res.setHeader('Access-Control-Allow-Origin', origin);
@@ -571,7 +572,7 @@ app.get('/api/v1/public/events', async (req, res) => {
             ORDER BY display_order ASC
             LIMIT 1
           ) cover ON TRUE
-          WHERE e.status IN ('published', 'approved') AND e.event_date > NOW()
+          WHERE e.status IN ('published', 'approved')
           GROUP BY e.id, c.name, cover.image_url
         `);
 
@@ -616,7 +617,7 @@ app.get('/api/v1/public/events', async (req, res) => {
         const matchesPrice = Number(event.price) >= Number(minPrice) && Number(event.price) <= Number(maxPrice);
         const term = String(search).toLowerCase();
         const matchesSearch = !term || `${event.title} ${event.summary}`.toLowerCase().includes(term);
-        return (event.status === 'published' || event.status === 'approved') && new Date(event.eventDate) > new Date() && matchesCounty && matchesPrice && matchesSearch;
+        return (event.status === 'published' || event.status === 'approved') && matchesCounty && matchesPrice && matchesSearch;
       });
 
       payload = filtered.map(buildPublicEvent);
@@ -624,6 +625,7 @@ app.get('/api/v1/public/events', async (req, res) => {
 
     return res.json({ success: true, data: payload });
   } catch (error) {
+    console.error('Error in GET /api/v1/public/events:', error);
     return res.status(500).json({ success: false, message: error.message || 'Unable to load events.' });
   }
 });

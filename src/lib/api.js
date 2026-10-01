@@ -27,9 +27,10 @@ async function request(endpoint, options = {}) {
 
   const contentType = response.headers.get('content-type') || '';
   const payload = contentType.includes('application/json') ? await response.json() : null;
+  const rawError = !response.ok && !payload ? await response.text().catch(() => '') : '';
 
   if (!response.ok) {
-    throw new Error(payload?.message || 'Request failed.');
+    throw new Error(payload?.message || rawError || `Request failed (${response.status}).`);
   }
 
   return payload;
