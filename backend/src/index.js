@@ -371,9 +371,13 @@ async function withSchemaRetry(operation) {
 function buildPublicEvent(event) {
   const organizer = users.find((user) => user.id === event.organizerId) || null;
   const likesCount = Number(event.likesCount ?? event.likes_count ?? event.interestCount ?? event.interest_count ?? 0);
+  const photos = Array.isArray(event.photos) ? event.photos : [];
+  const image = photos[0] || event.cover_image || event.coverImage || event.image || null;
 
   return {
     ...event,
+    photos,
+    image,
     likesCount,
     interestCount: likesCount,
     county: counties.find((county) => county.id === event.countyId) || null,
@@ -428,14 +432,25 @@ app.get('/api/v1/public/events', async (req, res) => {
         const likeMap = new Map(likeResult.rows.map((row) => [row.event_id, Number(row.likes_count || 0)]));
 
         const result = await query(`
-          SELECT e.*, c.name AS county_name
+          SELECT
+            e.*,
+            c.name AS county_name,
+            COALESCE(
+              json_agg(ei.image_url ORDER BY ei.display_order)
+                FILTER (WHERE ei.image_url IS NOT NULL),
+              '[]'::json
+            ) AS photos
           FROM events e
           LEFT JOIN counties c ON c.id = e.county_id
+          LEFT JOIN event_images ei ON ei.event_id = e.id
           WHERE e.status IN ('published', 'approved') AND e.event_date > NOW()
+          GROUP BY e.id, c.name
         `);
 
         const rows = result.rows.map((row) => ({
           ...row,
+          photos: Array.isArray(row.photos) ? row.photos : [],
+          image: (Array.isArray(row.photos) && row.photos[0]) || row.cover_image || null,
           likesCount: Number(likeMap.get(row.id) || 0),
           interestCount: Number(likeMap.get(row.id) || 0),
           county: row.county_name ? { id: row.county_id, name: row.county_name } : null,
@@ -534,6 +549,7 @@ app.post('/api/v1/public/events/:id/like', async (req, res) => {
         const count = await query('SELECT COUNT(*)::int AS likes_count FROM event_likes WHERE event_id = $1', [eventId]);
         return res.json({ success: true, likesCount: Number(count.rows[0].likes_count || 0), hasLiked: true });
       });
+      return;
     }
 
     const event = events.find((entry) => entry.id === eventId);
@@ -665,6 +681,8 @@ app.post('/api/v1/public/events', async (req, res) => {
       };
 
       const eventImages = Array.isArray(images) ? images.filter(Boolean) : [];
+      saved.photos = eventImages;
+      saved.image = eventImages[0] || null;
       if (eventImages.length > 0) {
         const imagePlaceholders = eventImages
           .map((_, index) => `($${index * 5 + 1}, $${index * 5 + 2}, $${index * 5 + 3}, $${index * 5 + 4}, $${index * 5 + 5})`)
@@ -679,6 +697,8 @@ app.post('/api/v1/public/events', async (req, res) => {
     }
 
     events.push(created);
+    created.photos = Array.isArray(images) ? images.filter(Boolean) : [];
+    created.image = created.photos[0] || null;
     return res.status(201).json({ success: true, data: created });
   } catch (error) {
     console.error('Failed to create event', error);
@@ -686,14 +706,55 @@ app.post('/api/v1/public/events', async (req, res) => {
   }
 });
 
-app.get('/api/v1/public/events/:id', (req, res) => {
-  const event = events.find((entry) => entry.id === req.params.id);
+app.get('/api/v1/public/events/:id', async (req, res) => {
+  const eventId = String(req.params.id || '').trim();
 
-  if (!event) {
-    return res.status(404).json({ success: false, message: 'Event not found.' });
+  try {
+    if (config.databaseUrl && isUuid(eventId)) {
+      const result = await query(`
+        SELECT
+          e.*,
+          c.name AS county_name,
+          COALESCE(
+            json_agg(ei.image_url ORDER BY ei.display_order)
+              FILTER (WHERE ei.image_url IS NOT NULL),
+            '[]'::json
+          ) AS photos,
+          (SELECT COUNT(*)::int FROM event_likes el WHERE el.event_id = e.id) AS likes_count
+        FROM events e
+        LEFT JOIN counties c ON c.id = e.county_id
+        LEFT JOIN event_images ei ON ei.event_id = e.id
+        WHERE e.id = $1 AND e.status IN ('published', 'approved')
+        GROUP BY e.id, c.name
+      `, [eventId]);
+
+      if (result.rows[0]) {
+        const row = result.rows[0];
+        return res.json({
+          success: true,
+          data: buildPublicEvent({
+            ...row,
+            organizerId: row.organizer_id,
+            countyId: row.county_id,
+            eventDate: row.event_date,
+            locationText: row.location_text,
+            photos: Array.isArray(row.photos) ? row.photos : [],
+            image: (Array.isArray(row.photos) && row.photos[0]) || row.cover_image || null,
+            likesCount: Number(row.likes_count || 0),
+          }),
+        });
+      }
+    }
+
+    const event = events.find((entry) => entry.id === eventId);
+    if (!event) {
+      return res.status(404).json({ success: false, message: 'Event not found.' });
+    }
+
+    return res.json({ success: true, data: buildPublicEvent(event) });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || 'Unable to load event.' });
   }
-
-  return res.json({ success: true, data: buildPublicEvent(event) });
 });
 
 app.post('/api/v1/auth/register', async (req, res) => {

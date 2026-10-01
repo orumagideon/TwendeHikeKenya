@@ -7,7 +7,7 @@ const DEFAULT_HIKER = {
   password: 'Hiker123!',
 }
 
-const DEFAULT_EVENT_IMAGE = 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=1200&q=80'
+const DEFAULT_EVENT_IMAGE = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%221200%22 height=%22800%22 viewBox=%220 0 1200 800%22%3E%3Crect width=%221200%22 height=%22800%22 fill=%22%23e7e5e4%22/%3E%3Cpath d=%22M0 620 260 400l180 130 190-250 310 340 260-180v360H0z%22 fill=%22%23a8a29e%22/%3E%3Ccircle cx=%22930%22 cy=%22180%22 r=%2270%22 fill=%22%23d6d3d1%22/%3E%3C/svg%3E'
 
 const getClientLikeKey = () => {
   if (typeof window === 'undefined') return 'anonymous-user'
@@ -21,15 +21,6 @@ const getClientLikeKey = () => {
     return `anon-${Date.now().toString(36)}`
   }
 }
-
-const fallbackImages = [
-  DEFAULT_EVENT_IMAGE,
-  'https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1486870591958-9b9d0d1dda99?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=800&q=80',
-]
 
 const KENYA_COUNTIES = [
   'Baringo', 'Bomet', 'Bungoma', 'Busia', 'Elgeyo-Marakwet', 'Embu', 'Garissa', 'Homa Bay', 'Isiolo', 'Kajiado',
@@ -137,8 +128,8 @@ const normalizeEvent = (event, index = 0) => {
     pickup: event.pickup || event.locationText || 'Nairobi CBD meeting point',
     googleMapUrl: event.googleMapUrl || event.mapUrl || '',
     date: event.eventDate || event.date || new Date().toISOString(),
-    image: event.image || event.photos?.[0] || fallbackImages[index % fallbackImages.length],
-    photos: event.photos?.length ? event.photos : [event.image || fallbackImages[index % fallbackImages.length]],
+    image: event.image || event.photos?.[0] || event.images?.[0] || DEFAULT_EVENT_IMAGE,
+    photos: event.photos?.length ? event.photos : (event.images?.length ? event.images : []),
     organizer: organizerName,
     organizerName: organizerName,
     organizerRating,
@@ -884,7 +875,7 @@ function App() {
       return
     }
 
-    const selectedPhotos = uploadedEventImages.length ? uploadedEventImages : [DEFAULT_EVENT_IMAGE]
+    const selectedPhotos = uploadedEventImages
     const customTiers = [
       { name: 'Early Bird', price: earlyPrice, note: 'Promo' },
       { name: 'Standard Hiker', price: standardPrice, active: true },
@@ -906,7 +897,7 @@ function App() {
       pickup,
       googleMapUrl,
       date,
-      image: selectedPhotos[0],
+      image: selectedPhotos[0] || DEFAULT_EVENT_IMAGE,
       photos: selectedPhotos,
       organizer: publicHostName,
       organizerName: publicHostName,
@@ -939,7 +930,7 @@ function App() {
         capacity: Number(maxTickets) || 30,
         status: 'pending_approval',
         organizerName: publicHostName,
-        images: selectedPhotos,
+        images: uploadedEventImages,
         tiers: customTiers,
       })
 
@@ -2363,11 +2354,10 @@ function App() {
                 <div className="field-group">
                   <label>Pickup Bus Location</label>
                   <select value={checkoutForm.pickup || ''} onChange={(e) => setCheckoutForm((prev) => ({ ...prev, pickup: e.target.value }))}>
-                    <option value="">Select pickup point</option>
-                    {checkoutHike?.hike?.pickup ? <option value={checkoutHike.hike.pickup}>{checkoutHike.hike.pickup}</option> : null}
-                    <option value="Nairobi CBD">Nairobi CBD</option>
-                    <option value="Nairobi National Park Gate">Nairobi National Park Gate</option>
-                    <option value="Direct at trailhead">Direct at trailhead</option>
+                    <option value={checkoutHike?.hike?.pickup || checkoutHike?.hike?.locationText || 'Direct at Trailhead / Event Venue'}>
+                      {checkoutHike?.hike?.pickup || checkoutHike?.hike?.locationText || 'Direct at Trailhead / Event Venue'}
+                    </option>
+                    <option value="Direct at Trailhead / Event Venue">Direct at Trailhead / Event Venue</option>
                   </select>
                 </div>
 
