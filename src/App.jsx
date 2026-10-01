@@ -1,6 +1,6 @@
 import { Component, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
-import { api, clearSession, getStoredUser, saveSession } from './lib/api'
+import { api, clearSession, getApiArray, getApiData, getStoredUser, saveSession } from './lib/api'
 
 const DEFAULT_HIKER = {
   email: 'hiker@twendehike.co.ke',
@@ -111,47 +111,55 @@ const createOrganizerCredential = () => {
   }
 }
 
-const normalizeEvent = (event, index = 0) => {
-  const organizerName = event.organizerName || (event.organizer?.firstName ? `${event.organizer.firstName} ${event.organizer.lastName}` : event.organizer || 'Twende Hike Kenya')
-  const maxTickets = Number(event.maxTickets || event.capacity || 30)
-  const soldTickets = Number(event.soldTickets || event.bookedSlots || 0)
-  const organizerRating = Number(event.organizerRating || 4.9)
-  const interestCount = Number(event.interestCount ?? event.totalRatings ?? 0)
+const normalizeEvent = (event = {}, index = 0) => {
+  const safeEvent = event && typeof event === 'object' ? event : {}
+  const organizerName = safeEvent.organizerName || (safeEvent.organizer?.firstName ? `${safeEvent.organizer.firstName} ${safeEvent.organizer.lastName}` : safeEvent.organizer || 'Twende Hike Kenya')
+  const maxTickets = Number(safeEvent.maxTickets || safeEvent.capacity || 30)
+  const soldTickets = Number(safeEvent.soldTickets || safeEvent.bookedSlots || 0)
+  const organizerRating = Number(safeEvent.organizerRating || 4.9)
+  const interestCount = Number(safeEvent.interestCount ?? safeEvent.totalRatings ?? 0)
+
+  const photos = Array.isArray(safeEvent.photos) && safeEvent.photos.length
+    ? safeEvent.photos
+    : (Array.isArray(safeEvent.images) ? safeEvent.images : [])
+  const tiers = Array.isArray(safeEvent.tiers) && safeEvent.tiers.length
+    ? safeEvent.tiers
+    : [{ name: 'Standard Hiker', price: Number(safeEvent.price || 0), active: true, note: 'Standard Fare' }]
 
   return {
-    id: event.id,
-    title: event.title,
-    tag: event.tag || (index % 2 === 0 ? 'beginner' : 'prep'),
-    county: event.county?.name || event.county || 'Nairobi',
-    difficulty: event.difficulty || 'Moderate',
-    distance: event.distance || '10 KM',
-    elevation: event.elevation || '1,800 m',
-    duration: event.duration || '4 - 5 Hours',
-    departure: event.departure || '5:30 AM Nairobi CBD',
-    pickup: event.meetingPoint || event.pickup || event.locationText || '',
-    meetingPoint: event.meetingPoint || event.pickup || event.locationText || '',
-    pickupTime: event.pickupTime || event.departure || event.startTime || '05:30 AM',
-    googleMapUrl: event.googleMapUrl || event.mapUrl || '',
-    date: event.eventDate || event.date || new Date().toISOString(),
-    image: event.image || event.photos?.[0] || event.images?.[0] || DEFAULT_EVENT_IMAGE,
-    photos: event.photos?.length ? event.photos : (event.images?.length ? event.images : []),
+    id: safeEvent.id,
+    title: safeEvent.title || 'Untitled Hike',
+    tag: safeEvent.tag || (index % 2 === 0 ? 'beginner' : 'prep'),
+    county: safeEvent.county?.name || safeEvent.county || 'Nairobi',
+    difficulty: safeEvent.difficulty || 'Moderate',
+    distance: safeEvent.distance || '10 KM',
+    elevation: safeEvent.elevation || '1,800 m',
+    duration: safeEvent.duration || '4 - 5 Hours',
+    departure: safeEvent.departure || '5:30 AM Nairobi CBD',
+    pickup: safeEvent.meetingPoint || safeEvent.pickup || safeEvent.locationText || '',
+    meetingPoint: safeEvent.meetingPoint || safeEvent.pickup || safeEvent.locationText || '',
+    pickupTime: safeEvent.pickupTime || safeEvent.departure || safeEvent.startTime || '05:30 AM',
+    googleMapUrl: safeEvent.googleMapUrl || safeEvent.mapUrl || '',
+    date: safeEvent.eventDate || safeEvent.date || new Date().toISOString(),
+    image: safeEvent.image || photos[0] || DEFAULT_EVENT_IMAGE,
+    photos,
     organizer: organizerName,
-    organizerName: event.organizerName || organizerName,
-    organizerPhone: event.organizerPhone || '',
-    organizerEmail: event.organizerEmail || '',
+    organizerName: safeEvent.organizerName || organizerName,
+    organizerPhone: safeEvent.organizerPhone || '',
+    organizerEmail: safeEvent.organizerEmail || '',
     organizerRating,
     interestCount,
-    totalRatings: Number(event.totalRatings || 0),
-    visibleName: event.visibleName ?? true,
-    verified: event.verified ?? true,
-    description: event.summary || event.description || 'A scenic adventure designed for unforgettable outdoor experiences in Kenya.',
-    inclusions: Array.isArray(event.inclusions) && event.inclusions.length ? event.inclusions : DEFAULT_INCLUSIONS,
-    gear: event.gear || ['Hiking boots', 'Water bottle', 'Light rain jacket'],
-    tiers: event.tiers || [{ name: 'Standard Hiker', price: Number(event.price || 0), active: true, note: 'Standard Fare' }],
-    price: Number(event.price || 0),
+    totalRatings: Number(safeEvent.totalRatings || 0),
+    visibleName: safeEvent.visibleName ?? true,
+    verified: safeEvent.verified ?? true,
+    description: safeEvent.summary || safeEvent.description || 'A scenic adventure designed for unforgettable outdoor experiences in Kenya.',
+    inclusions: Array.isArray(safeEvent.inclusions) && safeEvent.inclusions.length ? safeEvent.inclusions : DEFAULT_INCLUSIONS,
+    gear: Array.isArray(safeEvent.gear) ? safeEvent.gear : ['Hiking boots', 'Water bottle', 'Light rain jacket'],
+    tiers,
+    price: Number(safeEvent.price || 0),
     maxTickets,
     soldTickets,
-    status: event.status || 'approved',
+    status: safeEvent.status || 'approved',
   }
 }
 
@@ -348,7 +356,7 @@ function App() {
 
     api.getAdminEvents()
       .then((response) => {
-        const allEvents = Array.isArray(response?.data) ? response.data.map((event, index) => normalizeEvent(event, index)) : []
+        const allEvents = getApiArray(response).map((event, index) => normalizeEvent(event, index))
         setAdminEvents(allEvents)
         setPendingHikes(allEvents.filter((event) => event.status === 'pending_approval'))
         setApprovedHikes(allEvents.filter((event) => ['approved', 'published'].includes(event.status)))
@@ -664,7 +672,8 @@ function App() {
           api.getPublicEvents(),
           api.getHeroSettings().catch(() => ({ data: DEFAULT_HERO_SETTINGS })),
         ])
-        const heroData = settingsResult?.data || {}
+        const heroPayload = getApiData(settingsResult, {})
+        const heroData = heroPayload && typeof heroPayload === 'object' && !Array.isArray(heroPayload) ? heroPayload : {}
         const loadedSettings = {
           ...DEFAULT_HERO_SETTINGS,
           heroHeadline: heroData.title || heroData.heroHeadline || DEFAULT_HERO_SETTINGS.heroHeadline,
@@ -675,10 +684,11 @@ function App() {
         }
         setHeroSettings({ ...DEFAULT_HERO_SETTINGS, ...loadedSettings })
         setHeroSettingsForm({ ...DEFAULT_HERO_SETTINGS, ...loadedSettings })
-        const eventList = Array.isArray(eventsResult?.data) ? eventsResult.data : []
-        const normalizedRemote = eventList.map((item, index) => normalizeEvent(item, index))
-        const fallbackList = Array.isArray(fallbackApproved) && fallbackApproved.length ? fallbackApproved : fallbackHikes
-        const mergedHikes = normalizedRemote.length ? normalizedRemote : fallbackList
+        const normalizedRemote = getApiArray(eventsResult).map((item, index) => normalizeEvent(item, index))
+        const safeFallbackApproved = Array.isArray(fallbackApproved) ? fallbackApproved : []
+        const safeFallbackHikes = Array.isArray(fallbackHikes) ? fallbackHikes : []
+        const fallbackList = safeFallbackApproved.length ? safeFallbackApproved : safeFallbackHikes
+        const mergedHikes = normalizedRemote.length ? normalizedRemote : fallbackList.map((item, index) => normalizeEvent(item, index))
 
         setHikes(mergedHikes)
         setApprovedHikes(mergedHikes)
@@ -700,7 +710,9 @@ function App() {
       } catch (error) {
         const fallbackApproved = readStorage(STORAGE_KEYS.approved, [])
         const fallbackHikes = readStorage(STORAGE_KEYS.hikes, [])
-        const persistedHikes = fallbackApproved.length ? fallbackApproved : fallbackHikes
+        const safeFallbackApproved = Array.isArray(fallbackApproved) ? fallbackApproved : []
+        const safeFallbackHikes = Array.isArray(fallbackHikes) ? fallbackHikes : []
+        const persistedHikes = (safeFallbackApproved.length ? safeFallbackApproved : safeFallbackHikes).map((item, index) => normalizeEvent(item, index))
         setHikes(persistedHikes)
         setApprovedHikes(persistedHikes)
         persistMarketplaceState(persistedHikes, persistedHikes)
@@ -727,7 +739,7 @@ function App() {
       }
       if (difficulty !== 'all' && hike.difficulty !== difficulty) return false
         if (county !== 'all' && !String(hike.county || '').toLowerCase().includes(String(county).toLowerCase())) return false
-      const lowestTier = Math.min(...hike.tiers.map((tier) => Number(tier.price || 0)))
+      const lowestTier = Math.min(...(Array.isArray(hike.tiers) ? hike.tiers : []).map((tier) => Number(tier.price || 0)))
       if (lowestTier > maxPrice) return false
       return Number(hike.soldTickets || 0) < Number(hike.maxTickets || Number.MAX_SAFE_INTEGER)
     })

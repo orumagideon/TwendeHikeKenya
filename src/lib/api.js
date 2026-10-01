@@ -52,8 +52,25 @@ export function clearSession() {
 }
 
 export function getStoredUser() {
-  const rawUser = localStorage.getItem(USER_KEY);
-  return rawUser ? JSON.parse(rawUser) : null;
+  try {
+    const rawUser = localStorage.getItem(USER_KEY)
+    return rawUser ? JSON.parse(rawUser) : null
+  } catch (error) {
+    localStorage.removeItem(USER_KEY)
+    return null
+  }
+}
+
+export function getApiData(response, fallback = null) {
+  return response?.data ?? response ?? fallback;
+}
+
+export function getApiArray(response) {
+  const payload = getApiData(response, [])
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.events)) return payload.events
+  if (Array.isArray(payload?.counties)) return payload.counties
+  return []
 }
 
 export const api = {
