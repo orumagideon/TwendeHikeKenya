@@ -26,53 +26,53 @@ app.use((req, res, next) => {
 });
 
 const counties = [
-  { id: 1, name: 'Baringo', code: 'BRG' },
-  { id: 2, name: 'Bomet', code: 'BMT' },
-  { id: 3, name: 'Bungoma', code: 'BNG' },
-  { id: 4, name: 'Busia', code: 'BSA' },
-  { id: 5, name: 'Elgeyo-Marakwet', code: 'EMK' },
-  { id: 6, name: 'Embu', code: 'EMB' },
-  { id: 7, name: 'Garissa', code: 'GRS' },
-  { id: 8, name: 'Homa Bay', code: 'HBY' },
-  { id: 9, name: 'Isiolo', code: 'ISL' },
-  { id: 10, name: 'Kajiado', code: 'KJD' },
-  { id: 11, name: 'Kakamega', code: 'KKG' },
-  { id: 12, name: 'Kericho', code: 'KRC' },
-  { id: 13, name: 'Kiambu', code: 'KBU' },
-  { id: 14, name: 'Kilifi', code: 'KLF' },
-  { id: 15, name: 'Kirinyaga', code: 'KRG' },
-  { id: 16, name: 'Kisii', code: 'KSI' },
-  { id: 17, name: 'Kisumu', code: 'KSM' },
-  { id: 18, name: 'Kitui', code: 'KTI' },
-  { id: 19, name: 'Kwale', code: 'KWA' },
-  { id: 20, name: 'Laikipia', code: 'LKP' },
-  { id: 21, name: 'Lamu', code: 'LAM' },
-  { id: 22, name: 'Machakos', code: 'MCK' },
-  { id: 23, name: 'Makueni', code: 'MKN' },
-  { id: 24, name: 'Mandera', code: 'MDR' },
-  { id: 25, name: 'Marsabit', code: 'MSB' },
-  { id: 26, name: 'Meru', code: 'MRU' },
-  { id: 27, name: 'Migori', code: 'MGR' },
-  { id: 28, name: 'Mombasa', code: 'MSA' },
-  { id: 29, name: 'Murang\'a', code: 'MRG' },
-  { id: 30, name: 'Nairobi', code: 'NBO' },
-  { id: 31, name: 'Nakuru', code: 'NKR' },
-  { id: 32, name: 'Nandi', code: 'NDI' },
-  { id: 33, name: 'Narok', code: 'NRK' },
-  { id: 34, name: 'Nyamira', code: 'NYM' },
-  { id: 35, name: 'Nyandarua', code: 'NYD' },
-  { id: 36, name: 'Nyeri', code: 'NYR' },
-  { id: 37, name: 'Samburu', code: 'SMB' },
-  { id: 38, name: 'Siaya', code: 'SYA' },
-  { id: 39, name: 'Taita-Taveta', code: 'TTV' },
-  { id: 40, name: 'Tana River', code: 'TNR' },
-  { id: 41, name: 'Tharaka-Nithi', code: 'TNH' },
-  { id: 42, name: 'Trans Nzoia', code: 'TNZ' },
-  { id: 43, name: 'Turkana', code: 'TRK' },
-  { id: 44, name: 'Uasin Gishu', code: 'UGS' },
-  { id: 45, name: 'Vihiga', code: 'VHG' },
-  { id: 46, name: 'Wajir', code: 'WJR' },
-  { id: 47, name: 'West Pokot', code: 'WPK' }
+  { id: 1, name: 'Mombasa', code: '001' },
+  { id: 2, name: 'Kwale', code: '002' },
+  { id: 3, name: 'Kilifi', code: '003' },
+  { id: 4, name: 'Tana River', code: '004' },
+  { id: 5, name: 'Lamu', code: '005' },
+  { id: 6, name: 'Taita Taveta', code: '006' },
+  { id: 7, name: 'Garissa', code: '007' },
+  { id: 8, name: 'Wajir', code: '008' },
+  { id: 9, name: 'Mandera', code: '009' },
+  { id: 10, name: 'Marsabit', code: '010' },
+  { id: 11, name: 'Isiolo', code: '011' },
+  { id: 12, name: 'Meru', code: '012' },
+  { id: 13, name: 'Tharaka Nithi', code: '013' },
+  { id: 14, name: 'Embu', code: '014' },
+  { id: 15, name: 'Kitui', code: '015' },
+  { id: 16, name: 'Machakos', code: '016' },
+  { id: 17, name: 'Makueni', code: '017' },
+  { id: 18, name: 'Nyandarua', code: '018' },
+  { id: 19, name: 'Nyeri', code: '019' },
+  { id: 20, name: 'Kirinyaga', code: '020' },
+  { id: 21, name: 'Murang\'a', code: '021' },
+  { id: 22, name: 'Kiambu', code: '022' },
+  { id: 23, name: 'Turkana', code: '023' },
+  { id: 24, name: 'West Pokot', code: '024' },
+  { id: 25, name: 'Samburu', code: '025' },
+  { id: 26, name: 'Trans Nzoia', code: '026' },
+  { id: 27, name: 'Uasin Gishu', code: '027' },
+  { id: 28, name: 'Elgeyo Marakwet', code: '028' },
+  { id: 29, name: 'Nandi', code: '029' },
+  { id: 30, name: 'Baringo', code: '030' },
+  { id: 31, name: 'Laikipia', code: '031' },
+  { id: 32, name: 'Nakuru', code: '032' },
+  { id: 33, name: 'Narok', code: '033' },
+  { id: 34, name: 'Kajiado', code: '034' },
+  { id: 35, name: 'Kericho', code: '035' },
+  { id: 36, name: 'Bomet', code: '036' },
+  { id: 37, name: 'Kakamega', code: '037' },
+  { id: 38, name: 'Vihiga', code: '038' },
+  { id: 39, name: 'Bungoma', code: '039' },
+  { id: 40, name: 'Busia', code: '040' },
+  { id: 41, name: 'Siaya', code: '041' },
+  { id: 42, name: 'Kisumu', code: '042' },
+  { id: 43, name: 'Homa Bay', code: '043' },
+  { id: 44, name: 'Migori', code: '044' },
+  { id: 45, name: 'Kisii', code: '045' },
+  { id: 46, name: 'Nyamira', code: '046' },
+  { id: 47, name: 'Nairobi', code: '047' },
 ];
 
 const SUPERADMIN_EMAIL = config.superAdminEmail;
@@ -355,6 +355,31 @@ async function ensureDatabaseSchema() {
   }
 }
 
+async function seedKenyanCounties() {
+  if (!config.databaseUrl) {
+    return;
+  }
+
+  const countResult = await query('SELECT COUNT(*)::int AS count FROM counties');
+  if (Number(countResult.rows[0]?.count || 0) >= counties.length) {
+    return;
+  }
+
+  const values = counties
+    .map((county, index) => `($${index * 3 + 1}, $${index * 3 + 2}, $${index * 3 + 3})`)
+    .join(', ');
+  const params = counties.flatMap((county) => [county.id, county.name, county.code]);
+
+  await query(`
+    INSERT INTO counties (id, name, code)
+    VALUES ${values}
+    ON CONFLICT (id) DO UPDATE SET
+      name = EXCLUDED.name,
+      code = EXCLUDED.code
+  `, params);
+  await query("SELECT setval(pg_get_serial_sequence('counties', 'id'), 47, true)");
+}
+
 async function withSchemaRetry(operation) {
   try {
     return await operation();
@@ -415,8 +440,16 @@ app.get('/api/v1/public/health', (_req, res) => {
   res.json({ success: true, data: { status: 'ok', service: 'twendehike-backend' } });
 });
 
-app.get('/api/v1/public/counties', (_req, res) => {
-  res.json({ success: true, data: counties });
+app.get('/api/v1/public/counties', async (_req, res) => {
+  try {
+    if (config.databaseUrl) {
+      const result = await query('SELECT id, name, code FROM counties ORDER BY id ASC');
+      return res.json({ success: true, data: result.rows });
+    }
+    return res.json({ success: true, data: [...counties].sort((a, b) => a.id - b.id) });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || 'Unable to load counties.' });
+  }
 });
 
 app.get('/api/v1/public/events', async (req, res) => {
@@ -654,10 +687,17 @@ app.post('/api/v1/public/events', async (req, res) => {
         resolvedCountyName = countyResult.rows[0].name;
         created.countyId = normalizedCountyId;
         created.countyName = resolvedCountyName;
-      }
-
-      if (!normalizedCountyId) {
-        return res.status(400).json({ success: false, message: 'A valid county is required.' });
+      } else {
+        const countyResult = normalizedCountyId
+          ? await query('SELECT id, name FROM counties WHERE id = $1 LIMIT 1', [normalizedCountyId])
+          : await query('SELECT id, name FROM counties WHERE id = 47 LIMIT 1');
+        if (!countyResult.rows[0]) {
+          return res.status(400).json({ success: false, message: 'A valid county is required.' });
+        }
+        normalizedCountyId = Number(countyResult.rows[0].id);
+        resolvedCountyName = countyResult.rows[0].name;
+        created.countyId = normalizedCountyId;
+        created.countyName = resolvedCountyName;
       }
 
       const organizerId = await resolveEventOrganizerId();
@@ -1447,6 +1487,7 @@ app.use((req, res) => {
 app.listen(config.port, async () => {
   try {
     await ensureDatabaseSchema();
+    await seedKenyanCounties();
     await ensureDefaultSuperAdmin();
     console.log(`Twende Hike Kenya backend listening on port ${config.port}`);
   } catch (error) {

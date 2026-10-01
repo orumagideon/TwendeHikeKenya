@@ -22,23 +22,18 @@ const getClientLikeKey = () => {
   }
 }
 
-const KENYA_COUNTIES = [
-  'Baringo', 'Bomet', 'Bungoma', 'Busia', 'Elgeyo-Marakwet', 'Embu', 'Garissa', 'Homa Bay', 'Isiolo', 'Kajiado',
-  'Kakamega', 'Kericho', 'Kiambu', 'Kilifi', 'Kirinyaga', 'Kisii', 'Kisumu', 'Kitui', 'Kwale', 'Laikipia',
-  'Lamu', 'Machakos', 'Makueni', 'Mandera', 'Marsabit', 'Meru', 'Migori', 'Mombasa', 'Murang\'a', 'Nairobi',
-  'Nakuru', 'Nandi', 'Narok', 'Nyamira', 'Nyandarua', 'Nyeri', 'Samburu', 'Siaya', 'Taita-Taveta', 'Tana River',
-  'Tharaka-Nithi', 'Trans Nzoia', 'Turkana', 'Uasin Gishu', 'Vihiga', 'Wajir', 'West Pokot'
-]
+const COUNTY_OPTIONS = [
+  ['Mombasa', 1], ['Kwale', 2], ['Kilifi', 3], ['Tana River', 4], ['Lamu', 5], ['Taita Taveta', 6],
+  ['Garissa', 7], ['Wajir', 8], ['Mandera', 9], ['Marsabit', 10], ['Isiolo', 11], ['Meru', 12],
+  ['Tharaka Nithi', 13], ['Embu', 14], ['Kitui', 15], ['Machakos', 16], ['Makueni', 17], ['Nyandarua', 18],
+  ['Nyeri', 19], ['Kirinyaga', 20], ["Murang'a", 21], ['Kiambu', 22], ['Turkana', 23], ['West Pokot', 24],
+  ['Samburu', 25], ['Trans Nzoia', 26], ['Uasin Gishu', 27], ['Elgeyo Marakwet', 28], ['Nandi', 29],
+  ['Baringo', 30], ['Laikipia', 31], ['Nakuru', 32], ['Narok', 33], ['Kajiado', 34], ['Kericho', 35],
+  ['Bomet', 36], ['Kakamega', 37], ['Vihiga', 38], ['Bungoma', 39], ['Busia', 40], ['Siaya', 41],
+  ['Kisumu', 42], ['Homa Bay', 43], ['Migori', 44], ['Kisii', 45], ['Nyamira', 46], ['Nairobi', 47],
+].map(([name, id]) => ({ id, name, code: String(id).padStart(3, '0') }))
 
-const COUNTY_ID_BY_NAME = Object.freeze({
-  Baringo: 1, Bomet: 2, Bungoma: 3, Busia: 4, 'Elgeyo-Marakwet': 5, Embu: 6, Garissa: 7, 'Homa Bay': 8,
-  Isiolo: 9, Kajiado: 10, Kakamega: 11, Kericho: 12, Kiambu: 13, Kilifi: 14, Kirinyaga: 15, Kisii: 16,
-  Kisumu: 17, Kitui: 18, Kwale: 19, Laikipia: 20, Lamu: 21, Machakos: 22, Makueni: 23, Mandera: 24,
-  Marsabit: 25, Meru: 26, Migori: 27, Mombasa: 28, 'Murang\'a': 29, Nairobi: 30, Nakuru: 31, Nandi: 32,
-  Narok: 33, Nyamira: 34, Nyandarua: 35, Nyeri: 36, Samburu: 37, Siaya: 38, 'Taita-Taveta': 39,
-  'Tana River': 40, 'Tharaka-Nithi': 41, 'Trans Nzoia': 42, Turkana: 43, 'Uasin Gishu': 44, Vihiga: 45,
-  Wajir: 46, 'West Pokot': 47,
-})
+const KENYA_COUNTIES = COUNTY_OPTIONS.map((county) => county.name)
 
 const DEFAULT_INCLUSIONS = [
   'Round-trip road transfer from Nairobi',
@@ -171,6 +166,9 @@ function App() {
   const [countyInput, setCountyInput] = useState('All Locations')
   const [countyMenuOpen, setCountyMenuOpen] = useState(false)
   const [countyDisplayLimit, setCountyDisplayLimit] = useState(5)
+  const [countySearch, setCountySearch] = useState('Nairobi')
+  const [isCountyDropdownOpen, setIsCountyDropdownOpen] = useState(false)
+  const [selectedCounty, setSelectedCounty] = useState(() => COUNTY_OPTIONS.find((entry) => entry.name === 'Nairobi'))
   const [maxPrice, setMaxPrice] = useState(15000)
   const [mapMode, setMapMode] = useState('grid')
   const [hikes, setHikes] = useState([])
@@ -646,6 +644,18 @@ function App() {
 
   const visibleCountySuggestions = countySuggestions.slice(0, countyDisplayLimit)
 
+  const filteredCreationCounties = useMemo(() => {
+    const query = countySearch.trim().toLowerCase()
+    if (!query || query === selectedCounty?.name.toLowerCase()) return COUNTY_OPTIONS
+    return COUNTY_OPTIONS.filter((entry) => entry.name.toLowerCase().includes(query))
+  }, [countySearch, selectedCounty])
+
+  const selectCreationCounty = (countyOption) => {
+    setSelectedCounty(countyOption)
+    setCountySearch(countyOption.name)
+    setIsCountyDropdownOpen(false)
+  }
+
   const resetFilters = () => {
     setSearchTerm('')
     setDifficulty('all')
@@ -856,8 +866,8 @@ function App() {
     form.noValidate = true
 
     const title = (form.newTitle?.value || '').trim()
-    const countyValue = String(form.newCounty?.value || '').trim()
-    const countyId = Number(COUNTY_ID_BY_NAME[countyValue] || 0)
+    const countyValue = selectedCounty?.name || 'Nairobi'
+    const countyId = Number(selectedCounty?.id || 47)
     const difficultyValue = form.newDifficulty?.value || 'Moderate'
     const date = form.newDate?.value || ''
     const distance = (form.newDistance?.value || '').trim()
@@ -2591,11 +2601,48 @@ function App() {
               <div className="split-fields">
                 <div className="field-group">
                   <label>County / Region</label>
-                  <select name="newCounty" defaultValue="Nairobi">
-                    {KENYA_COUNTIES.map((countyName) => (
-                      <option key={countyName} value={countyName}>{countyName}</option>
-                    ))}
-                  </select>
+                  <div className="creation-county-combobox">
+                    <input
+                      name="newCounty"
+                      value={countySearch}
+                      autoComplete="off"
+                      placeholder="Search county, e.g. Nakuru"
+                      onFocus={() => {
+                        setCountySearch('')
+                        setIsCountyDropdownOpen(true)
+                      }}
+                      onChange={(event) => {
+                        setCountySearch(event.target.value)
+                        setIsCountyDropdownOpen(true)
+                      }}
+                      onBlur={() => {
+                        window.setTimeout(() => {
+                          setIsCountyDropdownOpen(false)
+                          setCountySearch(selectedCounty?.name || 'Nairobi')
+                        }, 120)
+                      }}
+                      aria-expanded={isCountyDropdownOpen}
+                      aria-autocomplete="list"
+                      role="combobox"
+                    />
+                    {isCountyDropdownOpen && (
+                      <div className="county-dropdown-menu" role="listbox">
+                        {filteredCreationCounties.length === 0 ? (
+                          <div className="county-dropdown-empty">No counties found</div>
+                        ) : filteredCreationCounties.map((countyOption) => (
+                          <button
+                            key={countyOption.id}
+                            type="button"
+                            className={`county-dropdown-item ${selectedCounty?.id === countyOption.id ? 'active' : ''}`}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => selectCreationCounty(countyOption)}
+                          >
+                            {countyOption.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="field-group">
