@@ -1560,7 +1560,7 @@ function App() {
 
         <div className="header-actions">
           <button type="button" className="ghost-btn small header-theme-toggle" onClick={() => setDarkMode((value) => !value)} aria-label={darkMode ? 'Use light theme' : 'Use dark theme'}>
-            <span className="theme-icon" aria-hidden="true">{darkMode ? '☀' : '☾'}</span>
+            <span className="theme-icon" aria-hidden="true">{darkMode ? '☀️' : '🌙'}</span>
             <span className="theme-label">{darkMode ? 'Light Theme' : 'Dark Theme'}</span>
           </button>
           {authUser?.role === 'super_admin' ? (
@@ -1585,7 +1585,11 @@ function App() {
               setMobileMenuOpen(true)
             }
           }} aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'} aria-expanded={mobileMenuOpen}>
-            {mobileMenuOpen ? '×' : '☰'}
+            {mobileMenuOpen ? '×' : (
+              <svg className="mobile-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+              </svg>
+            )}
           </button>
         </div>
       </header>

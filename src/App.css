@@ -2869,6 +2869,9 @@ th {
     padding: 0;
     border-radius: 50%;
     font-size: 1.1rem;
+    background: #ecfdf5;
+    color: #047857;
+    border: 1px solid #cbd5e1;
   }
 
   .header-theme-toggle .theme-label {
@@ -2894,6 +2897,17 @@ th {
     color: #0d4a2b;
     font-size: 1.5rem;
     font-weight: 800;
+  }
+
+  .mobile-menu-icon {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+
+  .theme-dark .header-theme-toggle {
+    background: #1e293b;
+    color: #fbbf24;
+    border-color: #475569;
   }
 
   .mobile-menu-sheet {
