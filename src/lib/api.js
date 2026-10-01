@@ -97,9 +97,17 @@ export const api = {
       method: 'DELETE',
     }),
 
+  updateAdminSettings: (payload) =>
+    request('/admin/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
   getCounties: () => request('/public/counties'),
 
   getPublicEvents: () => request('/public/events'),
+
+  getPublicSettings: () => request('/public/settings'),
 
   likeEvent: (eventId, payload = {}) =>
     request(`/public/events/${eventId}/like`, {

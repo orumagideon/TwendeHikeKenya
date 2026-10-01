@@ -481,8 +481,24 @@ button {
 }
 
 .mobile-menu-toggle,
-.mobile-menu-sheet {
+.mobile-menu-sheet,
+.mobile-menu-backdrop {
   display: none;
+}
+
+.modal-stats {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.modal-stats span {
+  color: #64748b;
+  font-weight: 600;
+}
+
+.modal-stats strong {
+  color: #0f172a;
+  font-weight: 800;
 }
 
 .instant-tag {
@@ -1375,6 +1391,19 @@ button {
 .theme-dark .admin-header h2,
 .theme-dark .create-header h3 {
   color: #f3faf8;
+}
+
+.theme-dark .modal-stats {
+  background: rgba(15, 23, 42, 0.92);
+  border-color: rgba(71, 85, 105, 0.8);
+}
+
+.theme-dark .modal-stats span {
+  color: #a7f3d0;
+}
+
+.theme-dark .modal-stats strong {
+  color: #fff;
 }
 
 .ticket-actions {
@@ -2833,6 +2862,15 @@ th {
     box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
   }
 
+  .mobile-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 29;
+    display: block;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+  }
+
   .mobile-menu-sheet button {
     border: 0;
     border-radius: 0.7rem;
@@ -2841,6 +2879,15 @@ th {
     padding: 0.8rem 0.75rem;
     text-align: left;
     font-weight: 700;
+  }
+
+  .mobile-menu-sheet .mobile-menu-close {
+    align-self: flex-end;
+    min-height: 2rem;
+    width: 2rem;
+    padding: 0;
+    text-align: center;
+    font-size: 1.3rem;
   }
 
   .mobile-menu-sheet button:hover {

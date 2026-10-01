@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { api, clearSession, getStoredUser, saveSession } from './lib/api'
 
@@ -8,6 +8,12 @@ const DEFAULT_HIKER = {
 }
 
 const DEFAULT_EVENT_IMAGE = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%221200%22 height=%22800%22 viewBox=%220 0 1200 800%22%3E%3Crect width=%221200%22 height=%22800%22 fill=%22%23e7e5e4%22/%3E%3Cpath d=%22M0 620 260 400l180 130 190-250 310 340 260-180v360H0z%22 fill=%22%23a8a29e%22/%3E%3Ccircle cx=%22930%22 cy=%22180%22 r=%2270%22 fill=%22%23d6d3d1%22/%3E%3C/svg%3E'
+
+const DEFAULT_HERO_SETTINGS = {
+  heroImageUrl: '',
+  heroOverlayColor: '#062d1f',
+  heroHeadline: 'Conquer the Aberdares, Longonot & Mt. Kenya.',
+}
 
 const getClientLikeKey = () => {
   if (typeof window === 'undefined') return 'anonymous-user'
@@ -267,12 +273,44 @@ function App() {
   const [adminProfileForm, setAdminProfileForm] = useState({ firstName: '', lastName: '' })
   const [adminPasswordForm, setAdminPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' })
   const [adminMessage, setAdminMessage] = useState('')
+  const [heroSettings, setHeroSettings] = useState(DEFAULT_HERO_SETTINGS)
+  const [heroSettingsForm, setHeroSettingsForm] = useState(DEFAULT_HERO_SETTINGS)
+  const overlayHistoryRef = useRef(false)
 
   const showToast = (message) => {
     setToast(message)
     window.clearTimeout(showToast.timeout)
     showToast.timeout = window.setTimeout(() => setToast(''), 3500)
   }
+
+  const pushOverlayHistory = () => {
+    if (typeof window === 'undefined' || overlayHistoryRef.current) return
+    window.history.pushState({ twendeOverlay: true }, '')
+    overlayHistoryRef.current = true
+  }
+
+  const closeOverlayHistory = () => {
+    if (typeof window === 'undefined' || !overlayHistoryRef.current) return
+    overlayHistoryRef.current = false
+    window.history.back()
+  }
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (!overlayHistoryRef.current) return
+      overlayHistoryRef.current = false
+      setEventModal(null)
+      setCheckoutHike(null)
+      setTicketModal(null)
+      setAdminLoginOpen(false)
+      setCreateModalOpen(false)
+      setMobileMenuOpen(false)
+      setLightboxIndex(null)
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
 
   const getStoredHikerAccounts = () => {
     if (typeof window === 'undefined') return []
@@ -577,7 +615,13 @@ function App() {
         const fallbackApproved = readStorage(STORAGE_KEYS.approved, [])
         const fallbackHikes = readStorage(STORAGE_KEYS.hikes, [])
 
-        const eventsResult = await api.getPublicEvents()
+        const [eventsResult, settingsResult] = await Promise.all([
+          api.getPublicEvents(),
+          api.getPublicSettings().catch(() => ({ data: DEFAULT_HERO_SETTINGS })),
+        ])
+        const loadedSettings = settingsResult?.data || DEFAULT_HERO_SETTINGS
+        setHeroSettings({ ...DEFAULT_HERO_SETTINGS, ...loadedSettings })
+        setHeroSettingsForm({ ...DEFAULT_HERO_SETTINGS, ...loadedSettings })
         const eventList = Array.isArray(eventsResult?.data) ? eventsResult.data : []
         const normalizedRemote = eventList.map((item, index) => normalizeEvent(item, index))
         const fallbackList = Array.isArray(fallbackApproved) && fallbackApproved.length ? fallbackApproved : fallbackHikes
@@ -670,6 +714,7 @@ function App() {
   }
 
   const openEventModal = (hike) => {
+    pushOverlayHistory()
     setEventModal(hike)
     setSelectedTierIndex(0)
   }
@@ -677,6 +722,42 @@ function App() {
   const closeEventModal = () => {
     setEventModal(null)
     setLightboxIndex(null)
+    closeOverlayHistory()
+  }
+
+  const openCreateModal = () => {
+    pushOverlayHistory()
+    setCreateModalOpen(true)
+  }
+
+  const closeCreateModal = () => {
+    setCreateModalOpen(false)
+    closeOverlayHistory()
+  }
+
+  const openAdminLogin = () => {
+    pushOverlayHistory()
+    setAdminLoginOpen(true)
+  }
+
+  const closeAdminLogin = () => {
+    setAdminLoginOpen(false)
+    closeOverlayHistory()
+  }
+
+  const closeCheckout = () => {
+    setCheckoutHike(null)
+    closeOverlayHistory()
+  }
+
+  const openTicketModal = (booking) => {
+    pushOverlayHistory()
+    setTicketModal(booking)
+  }
+
+  const closeTicketModal = () => {
+    closeTicketModal()
+    closeOverlayHistory()
   }
 
   const openEventLightbox = (index) => setLightboxIndex(index)
@@ -705,7 +786,7 @@ function App() {
     setCheckoutHike({ hike: eventModal, tier: selectedTier })
     setCheckoutStep('form')
     setCreateModalOpen(false)
-    closeEventModal()
+    setEventModal(null)
   }
 
   const triggerStkPrompt = async () => {
@@ -1209,7 +1290,7 @@ function App() {
   }
 
   const showPass = (booking) => {
-    setTicketModal(booking)
+    openTicketModal(booking)
   }
 
   const handleInterestClick = async (hikeId) => {
@@ -1291,7 +1372,7 @@ function App() {
       setAuthUser(user)
       setAdminProfileForm({ firstName: user.firstName || '', lastName: user.lastName || '' })
       setActiveView('admin')
-      setAdminLoginOpen(false)
+      closeAdminLogin()
       setAdminMessage('')
       showToast('Admin access granted.')
     } catch (error) {
@@ -1306,7 +1387,7 @@ function App() {
       setAdminMessage('Session expired. Please log in again as the superadmin.')
       clearSession()
       setAuthUser(null)
-      setAdminLoginOpen(true)
+      openAdminLogin()
       return
     }
 
@@ -1353,6 +1434,23 @@ function App() {
     }
   }
 
+  const handleHeroSettingsUpdate = async (event) => {
+    event.preventDefault()
+
+    try {
+      const response = await api.updateAdminSettings(heroSettingsForm)
+      const updatedSettings = response?.data
+      if (!response?.success || !updatedSettings) {
+        throw new Error(response?.message || 'Unable to update hero settings.')
+      }
+      setHeroSettings({ ...DEFAULT_HERO_SETTINGS, ...updatedSettings })
+      setHeroSettingsForm({ ...DEFAULT_HERO_SETTINGS, ...updatedSettings })
+      showToast('Hero banner settings updated.')
+    } catch (error) {
+      setAdminMessage(error.message || 'Unable to update hero settings.')
+    }
+  }
+
   const renderDifficultyBadge = (difficultyLevel) => {
     const palette = {
       Easy: 'bg-emerald-100 text-emerald-900',
@@ -1391,7 +1489,7 @@ function App() {
               className={`nav-button ${activeView === item.id ? 'active' : ''}`}
               onClick={() => {
                 if (item.id === 'admin' && (!authUser || authUser.role !== 'super_admin')) {
-                  setAdminLoginOpen(true)
+                  openAdminLogin()
                   return
                 }
                 setActiveView(item.id)
@@ -1413,35 +1511,52 @@ function App() {
               Logout
             </button>
           ) : (
-            <button type="button" className="ghost-btn small" onClick={() => setAdminLoginOpen(true)}>
+            <button type="button" className="ghost-btn small" onClick={openAdminLogin}>
               Admin Access
             </button>
           )}
           <div className="instant-tag">Instant M-PESA STK Push</div>
-          <button type="button" className="primary-btn small header-host-button" onClick={() => setCreateModalOpen(true)}>
+          <button type="button" className="primary-btn small header-host-button" onClick={openCreateModal}>
             Host a Hike
           </button>
-          <button type="button" className="mobile-menu-toggle" onClick={() => setMobileMenuOpen((value) => !value)} aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'} aria-expanded={mobileMenuOpen}>
+          <button type="button" className="mobile-menu-toggle" onClick={() => {
+            if (mobileMenuOpen) {
+              setMobileMenuOpen(false)
+              closeOverlayHistory()
+            } else {
+              pushOverlayHistory()
+              setMobileMenuOpen(true)
+            }
+          }} aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'} aria-expanded={mobileMenuOpen}>
             {mobileMenuOpen ? '×' : '☰'}
           </button>
         </div>
       </header>
 
       {mobileMenuOpen && (
-        <div className="mobile-menu-sheet">
-          <button type="button" onClick={() => { setActiveView('hiker-hub'); setMobileMenuOpen(false) }}>My Hikes &amp; Passes</button>
-          <button type="button" onClick={() => { setActiveView('organizer'); setMobileMenuOpen(false) }}>Organizer Studio</button>
-          <button type="button" onClick={() => { setAdminLoginOpen(true); setMobileMenuOpen(false) }}>Admin Access</button>
+        <div className="mobile-menu-backdrop" onClick={() => { setMobileMenuOpen(false); closeOverlayHistory() }}>
+          <div className="mobile-menu-sheet" onClick={(event) => event.stopPropagation()}>
+            <button type="button" className="mobile-menu-close" onClick={() => { setMobileMenuOpen(false); closeOverlayHistory() }} aria-label="Close menu">×</button>
+            <button type="button" onClick={() => { setActiveView('hiker-hub'); setMobileMenuOpen(false); closeOverlayHistory() }}>My Hikes &amp; Passes</button>
+            <button type="button" onClick={() => { setActiveView('organizer'); setMobileMenuOpen(false); closeOverlayHistory() }}>Organizer Studio</button>
+            <button type="button" onClick={() => { setMobileMenuOpen(false); openAdminLogin() }}>Admin Access</button>
+            <button type="button" onClick={() => { setMobileMenuOpen(false); openCreateModal() }}>Host a Hike</button>
+          </div>
         </div>
       )}
 
       <main className="content-area">
         {activeView === 'discover' && (
           <section className="discover-view">
-            <div className="hero-banner">
+            <div
+              className="hero-banner"
+              style={heroSettings.heroImageUrl ? {
+                backgroundImage: `linear-gradient(90deg, ${heroSettings.heroOverlayColor || DEFAULT_HERO_SETTINGS.heroOverlayColor} 0%, rgba(6, 45, 31, 0.45) 62%, rgba(6, 45, 31, 0.15) 100%), url(${heroSettings.heroImageUrl})`,
+              } : undefined}
+            >
               <div className="hero-content">
                 <div className="hero-pill">Kenya's #1 Trail Marketplace</div>
-                <h1>Conquer the Aberdares, Longonot &amp; Mt. Kenya.</h1>
+                <h1>{heroSettings.heroHeadline || DEFAULT_HERO_SETTINGS.heroHeadline}</h1>
                 <p>
                   Verified trail captains, licensed KWS rangers, pickup from Nairobi CBD, and seamless booking with <span className="highlight">Lipa na M-PESA</span>.
                 </p>
@@ -1934,7 +2049,7 @@ function App() {
                     <p>Lead Captain: {organizerSession.name} • {organizerSession.email}</p>
                   </div>
                   <div className="organizer-actions">
-                    <button type="button" className="primary-btn small" onClick={() => setCreateModalOpen(true)}>
+                    <button type="button" className="primary-btn small" onClick={openCreateModal}>
                       List New Expedition
                     </button>
                     <button type="button" className="secondary-btn small" onClick={() => showToast('Payout request submitted.')}>Request M-PESA Payout</button>
@@ -2147,6 +2262,41 @@ function App() {
                   <span>Registered Captains</span>
                   <strong>28 Organizers</strong>
                 </div>
+              </div>
+
+              <div className="admin-reset-box hero-settings-panel">
+                <h3>Hero Banner Settings</h3>
+                <form onSubmit={handleHeroSettingsUpdate} className="create-form">
+                  <div className="field-group">
+                    <label>Hero Headline</label>
+                    <input
+                      value={heroSettingsForm.heroHeadline}
+                      onChange={(event) => setHeroSettingsForm((prev) => ({ ...prev, heroHeadline: event.target.value }))}
+                      placeholder="Conquer the Aberdares, Longonot & Mt. Kenya."
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label>Hero Background Image URL</label>
+                    <input
+                      type="url"
+                      value={heroSettingsForm.heroImageUrl}
+                      onChange={(event) => setHeroSettingsForm((prev) => ({ ...prev, heroImageUrl: event.target.value }))}
+                      placeholder="https://images.example.com/hero.jpg"
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label>Hero Overlay Color</label>
+                    <input
+                      type="text"
+                      value={heroSettingsForm.heroOverlayColor}
+                      onChange={(event) => setHeroSettingsForm((prev) => ({ ...prev, heroOverlayColor: event.target.value }))}
+                      placeholder="#062d1f"
+                    />
+                  </div>
+                  <div className="create-actions">
+                    <button type="submit" className="primary-btn small">Save Hero Settings</button>
+                  </div>
+                </form>
               </div>
 
               <div className="admin-ticket-block">
@@ -2511,7 +2661,7 @@ function App() {
       )}
 
       {checkoutHike && (
-        <div className="modal-backdrop" onClick={() => setCheckoutHike(null)}>
+        <div className="modal-backdrop" onClick={closeCheckout}>
           <div className="checkout-modal" onClick={(e) => e.stopPropagation()}>
             <div className="checkout-header">
               <div className="mpesa-badge">M</div>
@@ -2519,7 +2669,7 @@ function App() {
                 <h3>Lipa na M-PESA</h3>
                 <p>Instant STK Push to your phone</p>
               </div>
-              <button type="button" className="checkout-close" onClick={() => setCheckoutHike(null)} aria-label="Close M-PESA checkout">×</button>
+              <button type="button" className="checkout-close" onClick={closeCheckout} aria-label="Close M-PESA checkout">×</button>
             </div>
 
             {checkoutStep === 'form' && (
@@ -2635,7 +2785,7 @@ function App() {
 
                 <div className="success-actions">
                   <button type="button" className="primary-btn small" onClick={() => showPass(userBookings[0])}>View Digital QR Pass</button>
-                  <button type="button" className="ghost-btn" onClick={() => { setCheckoutHike(null); setActiveView('hiker-hub') }}>
+                  <button type="button" className="ghost-btn" onClick={() => { closeCheckout(); setActiveView('hiker-hub') }}>
                     My Passes
                   </button>
                 </div>
@@ -2646,14 +2796,14 @@ function App() {
       )}
 
       {adminLoginOpen && (
-        <div className="modal-backdrop" onClick={() => setAdminLoginOpen(false)}>
+        <div className="modal-backdrop" onClick={closeAdminLogin}>
           <div className="create-modal" onClick={(e) => e.stopPropagation()}>
             <div className="create-header">
               <div>
                 <h3>Superadmin Access</h3>
                 <p>Private platform administration login.</p>
               </div>
-              <button type="button" className="close-button" onClick={() => setAdminLoginOpen(false)}>×</button>
+              <button type="button" className="close-button" onClick={closeAdminLogin}>×</button>
             </div>
 
             <form onSubmit={handleAdminLogin} className="create-form">
@@ -2682,7 +2832,7 @@ function App() {
               {adminMessage && <p className="admin-message">{adminMessage}</p>}
 
               <div className="create-actions">
-                <button type="button" className="ghost-btn" onClick={() => setAdminLoginOpen(false)}>Cancel</button>
+                <button type="button" className="ghost-btn" onClick={closeAdminLogin}>Cancel</button>
                 <button type="submit" className="primary-btn">Access Admin</button>
               </div>
             </form>
@@ -2691,14 +2841,14 @@ function App() {
       )}
 
       {createModalOpen && (
-        <div className="modal-backdrop" onClick={() => setCreateModalOpen(false)}>
+        <div className="modal-backdrop" onClick={closeCreateModal}>
           <div className="create-modal" onClick={(e) => e.stopPropagation()}>
             <div className="create-header">
               <div>
                 <h3>List New Kenyan Trail Expedition</h3>
                 <p>Publish your itinerary to thousands of Kenyan hikers.</p>
               </div>
-              <button type="button" className="close-button" onClick={() => setCreateModalOpen(false)}>×</button>
+              <button type="button" className="close-button" onClick={closeCreateModal}>×</button>
             </div>
 
             <form onSubmit={handleCreateHikeSubmit} noValidate className="create-form">
@@ -2947,7 +3097,7 @@ function App() {
               </div>
 
               <div className="create-actions">
-                <button type="button" className="ghost-btn" onClick={() => setCreateModalOpen(false)}>Cancel</button>
+                <button type="button" className="ghost-btn" onClick={closeCreateModal}>Cancel</button>
                 <button type="submit" className="primary-btn">Submit for Verification</button>
               </div>
             </form>
@@ -2956,11 +3106,11 @@ function App() {
       )}
 
       {ticketModal && (
-        <div className="modal-backdrop" onClick={() => setTicketModal(null)}>
+        <div className="modal-backdrop" onClick={closeTicketModal}>
           <div className="ticket-modal" onClick={(e) => e.stopPropagation()}>
             <div className="ticket-header">
               <strong>Official Trail Boarding Pass</strong>
-              <button type="button" className="close-button" onClick={() => setTicketModal(null)}>×</button>
+              <button type="button" className="close-button" onClick={closeTicketModal}>×</button>
             </div>
 
             <div className="ticket-pass-body">
@@ -3026,7 +3176,7 @@ function App() {
               <button type="button" className="primary-btn small" onClick={() => window.print()}>
                 Print Pass
               </button>
-              <button type="button" className="ghost-btn" onClick={() => setTicketModal(null)}>
+              <button type="button" className="ghost-btn" onClick={closeTicketModal}>
                 Close
               </button>
             </div>

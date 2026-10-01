@@ -234,6 +234,13 @@ async function ensureDatabaseSchema() {
       code VARCHAR(10) UNIQUE NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
+    `CREATE TABLE IF NOT EXISTS site_settings (
+      id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+      hero_image_url TEXT,
+      hero_overlay_color VARCHAR(50) NOT NULL DEFAULT '#062d1f',
+      hero_headline TEXT NOT NULL DEFAULT 'Conquer the Aberdares, Longonot & Mt. Kenya.',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
     `CREATE TABLE IF NOT EXISTS events (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       organizer_id UUID NOT NULL,
@@ -465,6 +472,30 @@ function signToken(user) {
 
 app.get('/api/v1/public/health', (_req, res) => {
   res.json({ success: true, data: { status: 'ok', service: 'twendehike-backend' } });
+});
+
+app.get('/api/v1/public/settings', async (_req, res) => {
+  const fallback = {
+    heroImageUrl: null,
+    heroOverlayColor: '#062d1f',
+    heroHeadline: 'Conquer the Aberdares, Longonot & Mt. Kenya.',
+  };
+
+  try {
+    if (!config.databaseUrl) return res.json({ success: true, data: fallback });
+    const result = await query('SELECT hero_image_url, hero_overlay_color, hero_headline FROM site_settings WHERE id = 1 LIMIT 1');
+    const row = result.rows[0];
+    return res.json({
+      success: true,
+      data: row ? {
+        heroImageUrl: row.hero_image_url || null,
+        heroOverlayColor: row.hero_overlay_color || fallback.heroOverlayColor,
+        heroHeadline: row.hero_headline || fallback.heroHeadline,
+      } : fallback,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || 'Unable to load site settings.' });
+  }
 });
 
 app.get('/api/v1/public/counties', async (_req, res) => {
@@ -1171,6 +1202,32 @@ app.patch('/api/v1/admin/profile', authMiddleware, requireRoles('super_admin'), 
     return res.json({ success: true, data: { user: { id: admin.id, firstName, lastName, email: admin.email, phone: admin.phone, role: admin.role } } });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message || 'Unable to update admin profile.' });
+  }
+});
+
+app.patch('/api/v1/admin/settings', authMiddleware, requireRoles('super_admin'), async (req, res) => {
+  const heroImageUrl = String(req.body?.heroImageUrl || '').trim() || null;
+  const heroOverlayColor = String(req.body?.heroOverlayColor || '#062d1f').trim();
+  const heroHeadline = String(req.body?.heroHeadline || '').trim() || 'Conquer the Aberdares, Longonot & Mt. Kenya.';
+
+  try {
+    if (!config.databaseUrl) {
+      return res.json({ success: true, data: { heroImageUrl, heroOverlayColor, heroHeadline } });
+    }
+    const result = await query(`
+      INSERT INTO site_settings (id, hero_image_url, hero_overlay_color, hero_headline, updated_at)
+      VALUES (1, $1, $2, $3, NOW())
+      ON CONFLICT (id) DO UPDATE SET
+        hero_image_url = EXCLUDED.hero_image_url,
+        hero_overlay_color = EXCLUDED.hero_overlay_color,
+        hero_headline = EXCLUDED.hero_headline,
+        updated_at = NOW()
+      RETURNING hero_image_url, hero_overlay_color, hero_headline
+    `, [heroImageUrl, heroOverlayColor, heroHeadline]);
+    const row = result.rows[0];
+    return res.json({ success: true, data: { heroImageUrl: row.hero_image_url, heroOverlayColor: row.hero_overlay_color, heroHeadline: row.hero_headline } });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || 'Unable to update site settings.' });
   }
 });
 
