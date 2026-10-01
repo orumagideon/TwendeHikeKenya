@@ -1531,7 +1531,7 @@ function App() {
 
   return (
     <div className={`app-shell ${darkMode ? 'theme-dark' : ''}`}>
-      <header className="topbar">
+      <header className="topbar sticky top-0 z-50 w-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm">
         <button type="button" className="header-theme-toggle" onClick={() => setDarkMode((value) => !value)} aria-label={darkMode ? 'Use light theme' : 'Use dark theme'}>
           <span className="theme-icon" aria-hidden="true">{darkMode ? '☀️' : '🌙'}</span>
           <span className="theme-label">{darkMode ? 'Light' : 'Dark'}</span>
@@ -1649,8 +1649,9 @@ function App() {
             </div>
 
             <div className="search-panel">
-              <div className="field-box">
-                <label>Search</label>
+              {/* Row 1: Full-width search input */}
+              <div className="field-box search-field">
+                <label>Search Trail</label>
                 <input
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -1658,10 +1659,11 @@ function App() {
                 />
               </div>
 
+              {/* Row 2: Difficulty */}
               <div className="field-box">
                 <label>Difficulty</label>
                 <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)}>
-                  <option value="all">All Difficulty Levels</option>
+                  <option value="all">All Levels</option>
                   <option value="Easy">Easy</option>
                   <option value="Moderate">Moderate</option>
                   <option value="Challenging">Challenging</option>
@@ -1669,6 +1671,7 @@ function App() {
                 </select>
               </div>
 
+              {/* Row 2: County */}
               <div className="field-box county-field-box">
                 <label>County</label>
                 <div className="county-input-wrap">
@@ -1739,8 +1742,9 @@ function App() {
                 </div>
               </div>
 
+              {/* Row 3: Full-width price slider */}
               <div className="field-box price-box">
-                <label>Max price</label>
+                <label>Max Price: KES {maxPrice.toLocaleString()}</label>
                 <div className="range-wrap">
                   <input
                     type="range"
@@ -1750,21 +1754,6 @@ function App() {
                     value={maxPrice}
                     onChange={(e) => setMaxPrice(Number(e.target.value))}
                   />
-                  <input
-                    type="number"
-                    min="0"
-                    max="15000"
-                    step="500"
-                    value={maxPrice}
-                    onChange={(e) => {
-                      const next = Number(e.target.value || 0)
-                      setMaxPrice(Math.min(15000, Math.max(0, next)))
-                    }}
-                    className="price-input"
-                  />
-                  <span className="range-label">
-                    {maxPrice >= 15000 ? 'KES 15000+' : `KES ${maxPrice.toLocaleString()}`}
-                  </span>
                 </div>
               </div>
             </div>
