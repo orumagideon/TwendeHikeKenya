@@ -212,6 +212,7 @@ function App() {
   })
   const [eventModal, setEventModal] = useState(null)
   const [lightboxIndex, setLightboxIndex] = useState(null)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [selectedTierIndex, setSelectedTierIndex] = useState(0)
   const [checkoutHike, setCheckoutHike] = useState(null)
   const [checkoutStep, setCheckoutStep] = useState('form')
@@ -710,10 +711,13 @@ function App() {
   const triggerStkPrompt = async () => {
     if (!checkoutHike) return
 
+    const phoneDigits = String(checkoutForm.phoneNumber || '').replace(/\D/g, '').replace(/^0/, '')
+    const normalizedPhoneNumber = phoneDigits.startsWith('254') ? `+${phoneDigits}` : `+254${phoneDigits}`
+
     try {
       const paymentResult = await api.initiateStkPush({
         eventId: checkoutHike.hike.id,
-        phoneNumber: checkoutForm.phoneNumber,
+        phoneNumber: normalizedPhoneNumber,
         amount: Number(checkoutHike.tier.price),
         quantity: 1,
         pickupLocation: checkoutForm.pickup || checkoutHike.hike.pickup || 'Direct at trailhead',
@@ -1400,8 +1404,9 @@ function App() {
         </nav>
 
         <div className="header-actions">
-          <button type="button" className="ghost-btn small" onClick={() => setDarkMode((value) => !value)}>
-            {darkMode ? 'Light Theme' : 'Dark Theme'}
+          <button type="button" className="ghost-btn small header-theme-toggle" onClick={() => setDarkMode((value) => !value)} aria-label={darkMode ? 'Use light theme' : 'Use dark theme'}>
+            <span className="theme-icon" aria-hidden="true">{darkMode ? '☀' : '☾'}</span>
+            <span className="theme-label">{darkMode ? 'Light Theme' : 'Dark Theme'}</span>
           </button>
           {authUser?.role === 'super_admin' ? (
             <button type="button" className="ghost-btn small" onClick={logout}>
@@ -1413,11 +1418,22 @@ function App() {
             </button>
           )}
           <div className="instant-tag">Instant M-PESA STK Push</div>
-          <button type="button" className="primary-btn small" onClick={() => setCreateModalOpen(true)}>
+          <button type="button" className="primary-btn small header-host-button" onClick={() => setCreateModalOpen(true)}>
             Host a Hike
+          </button>
+          <button type="button" className="mobile-menu-toggle" onClick={() => setMobileMenuOpen((value) => !value)} aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'} aria-expanded={mobileMenuOpen}>
+            {mobileMenuOpen ? '×' : '☰'}
           </button>
         </div>
       </header>
+
+      {mobileMenuOpen && (
+        <div className="mobile-menu-sheet">
+          <button type="button" onClick={() => { setActiveView('hiker-hub'); setMobileMenuOpen(false) }}>My Hikes &amp; Passes</button>
+          <button type="button" onClick={() => { setActiveView('organizer'); setMobileMenuOpen(false) }}>Organizer Studio</button>
+          <button type="button" onClick={() => { setAdminLoginOpen(true); setMobileMenuOpen(false) }}>Admin Access</button>
+        </div>
+      )}
 
       <main className="content-area">
         {activeView === 'discover' && (
@@ -1430,7 +1446,7 @@ function App() {
                   Verified trail captains, licensed KWS rangers, pickup from Nairobi CBD, and seamless booking with <span className="highlight">Lipa na M-PESA</span>.
                 </p>
 
-                <div className="tag-row">
+                <div className="tag-row filter-pills-container">
                   {['all', 'beginner', 'aberdares', 'prep', 'nairobi'].map((tag) => (
                     <button
                       key={tag}
@@ -2498,44 +2514,40 @@ function App() {
         <div className="modal-backdrop" onClick={() => setCheckoutHike(null)}>
           <div className="checkout-modal" onClick={(e) => e.stopPropagation()}>
             <div className="checkout-header">
-              <div className="brand-mark small">M</div>
+              <div className="mpesa-badge">M</div>
               <div>
-                <h3>M-PESA Checkout</h3>
-                <p>Complete your payment securely from your phone.</p>
+                <h3>Lipa na M-PESA</h3>
+                <p>Instant STK Push to your phone</p>
               </div>
-              <button type="button" className="ghost-btn small" onClick={() => setCheckoutHike(null)}>Cancel</button>
+              <button type="button" className="checkout-close" onClick={() => setCheckoutHike(null)} aria-label="Close M-PESA checkout">×</button>
             </div>
 
             {checkoutStep === 'form' && (
               <div className="checkout-form">
-                <div className="mpesa-summary">
-                  <div>
-                    <span>Expedition</span>
+                <div className="mpesa-summary-card">
+                  <div className="mpesa-summary-topline">
                     <strong>{checkoutHike.hike.title}</strong>
+                    <span>{formatDate(checkoutHike.hike.date)} · {checkoutHike.hike.county}</span>
                   </div>
-                  <div>
-                    <span>Ticket</span>
-                    <strong>{checkoutHike.tier.name}</strong>
-                  </div>
-                  <div>
-                    <span>Price</span>
+                  <div className="mpesa-summary-bottomline">
+                    <span>{checkoutHike.tier.name}</span>
                     <strong>KES {Number(checkoutHike.tier.price).toLocaleString()}</strong>
                   </div>
                 </div>
 
                 <div className="field-group">
                   <label>Hiker Full Name</label>
-                  <input value={checkoutForm.fullName} onChange={(e) => setCheckoutForm((prev) => ({ ...prev, fullName: e.target.value }))} />
+                  <input placeholder="e.g. Jane Wanjiku" value={checkoutForm.fullName} onChange={(e) => setCheckoutForm((prev) => ({ ...prev, fullName: e.target.value }))} />
                 </div>
 
                 <div className="split-fields">
                   <div className="field-group">
                     <label>National ID / Passport #</label>
-                    <input value={checkoutForm.idNumber} onChange={(e) => setCheckoutForm((prev) => ({ ...prev, idNumber: e.target.value }))} />
+                    <input placeholder="e.g. 12345678" value={checkoutForm.idNumber} onChange={(e) => setCheckoutForm((prev) => ({ ...prev, idNumber: e.target.value }))} />
                   </div>
                   <div className="field-group">
                     <label>Emergency Contact</label>
-                    <input value={checkoutForm.emergencyContact} onChange={(e) => setCheckoutForm((prev) => ({ ...prev, emergencyContact: e.target.value }))} />
+                    <input placeholder="e.g. Next of Kin Name & 07..." value={checkoutForm.emergencyContact} onChange={(e) => setCheckoutForm((prev) => ({ ...prev, emergencyContact: e.target.value }))} />
                   </div>
                 </div>
 
@@ -2551,11 +2563,14 @@ function App() {
 
                 <div className="field-group">
                   <label>Safaricom M-PESA Phone Number</label>
-                  <input value={checkoutForm.phoneNumber} onChange={(e) => setCheckoutForm((prev) => ({ ...prev, phoneNumber: e.target.value }))} />
+                  <div className="phone-input-wrap">
+                    <span className="phone-prefix">+254</span>
+                    <input inputMode="numeric" placeholder="7XXXXXXXX" value={checkoutForm.phoneNumber.replace(/^\+?254/, '').replace(/^0/, '')} onChange={(e) => setCheckoutForm((prev) => ({ ...prev, phoneNumber: e.target.value }))} />
+                  </div>
                 </div>
 
-                <button type="button" className="primary-btn full" onClick={triggerStkPrompt}>
-                  Send M-PESA STK Push
+                <button type="button" className="mpesa-pay-button" onClick={triggerStkPrompt}>
+                  Pay KES {Number(checkoutHike.tier.price).toLocaleString()} via M-PESA
                 </button>
               </div>
             )}
