@@ -211,6 +211,7 @@ function App() {
     organization: '',
   })
   const [eventModal, setEventModal] = useState(null)
+  const [lightboxIndex, setLightboxIndex] = useState(null)
   const [selectedTierIndex, setSelectedTierIndex] = useState(0)
   const [checkoutHike, setCheckoutHike] = useState(null)
   const [checkoutStep, setCheckoutStep] = useState('form')
@@ -672,7 +673,19 @@ function App() {
     setSelectedTierIndex(0)
   }
 
-  const closeEventModal = () => setEventModal(null)
+  const closeEventModal = () => {
+    setEventModal(null)
+    setLightboxIndex(null)
+  }
+
+  const openEventLightbox = (index) => setLightboxIndex(index)
+  const closeEventLightbox = () => setLightboxIndex(null)
+
+  const eventModalPhotos = eventModal?.photos?.length
+    ? eventModal.photos
+    : eventModal?.image
+      ? [eventModal.image]
+      : []
 
   const bookSelectedTier = () => {
     if (!eventModal) return
@@ -2342,12 +2355,14 @@ function App() {
                 <p>{eventModal.description}</p>
               </div>
 
-              {(eventModal.photos || [eventModal.image]).length > 0 && (
+              {eventModalPhotos.length > 0 && (
                 <div className="modal-section">
                   <h4>Event Photos</h4>
                   <div className="photo-gallery">
-                    {(eventModal.photos || [eventModal.image]).map((photo, photoIndex) => (
-                      <img key={`${photo || 'event-photo'}-${photoIndex}`} src={photo} alt={`${eventModal.title} photo ${photoIndex + 1}`} className="gallery-image" />
+                    {eventModalPhotos.map((photo, photoIndex) => (
+                      <button key={`${photo || 'event-photo'}-${photoIndex}`} type="button" className="gallery-button" onClick={() => openEventLightbox(photoIndex)} aria-label={`Expand ${eventModal.title} photo ${photoIndex + 1}`}>
+                        <img src={photo} alt={`${eventModal.title} photo ${photoIndex + 1}`} className="gallery-image" />
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -2357,9 +2372,16 @@ function App() {
                 <h4>What’s Included</h4>
                 <ul className="info-list">
                   {(eventModal.inclusions?.length ? eventModal.inclusions : DEFAULT_INCLUSIONS).map((item, index) => (
-                    <li key={`${typeof item === 'string' ? item : item?.name || item?.label || index}-${index}`}>
-                      ✓ {typeof item === 'string' ? item : item?.name || item?.label || item?.title || String(item)}
-                    </li>
+                    (() => {
+                      const rawItem = typeof item === 'string' ? item : item?.name || item?.label || item?.title || String(item)
+                      const cleanItem = rawItem.replace(/^[✓✔\s\-*]+/, '')
+                      return (
+                        <li key={`${cleanItem}-${index}`}>
+                          <span className="inclusion-check" aria-hidden="true">✓</span>
+                          <span>{cleanItem}</span>
+                        </li>
+                      )
+                    })()
                   ))}
                 </ul>
               </div>
@@ -2379,22 +2401,26 @@ function App() {
                 <p className="pickup-note">🕒 {eventModal.pickupTime || eventModal.departure || '05:30 AM'}</p>
                 {eventModal.googleMapUrl && (
                   <a className="map-link" href={eventModal.googleMapUrl} target="_blank" rel="noopener noreferrer">
-                    View on Google Maps
+                    📍 Open in Google Maps ↗
                   </a>
                 )}
               </div>
 
               <div className="modal-section organizer-contact-card">
                 <h4>Host &amp; Organizer Contact</h4>
-                <p><strong>{eventModal.organizerName || eventModal.organizer}</strong>{eventModal.verified && <span className="verified-dot"> ✓ Verified</span>}</p>
-                {eventModal.organizerPhone && (
-                  <p>
-                    <a href={`tel:${eventModal.organizerPhone}`}>📞 {eventModal.organizerPhone}</a>
-                    {' '}
-                    <a href={`https://wa.me/${String(eventModal.organizerPhone).replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer">WhatsApp</a>
-                  </p>
-                )}
-                {eventModal.organizerEmail && <p><a href={`mailto:${eventModal.organizerEmail}`}>✉️ {eventModal.organizerEmail}</a></p>}
+                <div className="organizer-contact-header">
+                  <strong>{eventModal.organizerName || eventModal.organizer}</strong>
+                  {eventModal.verified && <span className="verified-badge modal-verified">✓ Verified</span>}
+                </div>
+                <div className="organizer-contact-actions">
+                  {eventModal.organizerPhone && (
+                    <>
+                      <a className="contact-action whatsapp-action" href={`https://wa.me/${String(eventModal.organizerPhone).replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer">Chat on WhatsApp</a>
+                      <a className="contact-action phone-action" href={`tel:${eventModal.organizerPhone}`}>Call Organizer</a>
+                    </>
+                  )}
+                  {eventModal.organizerEmail && <a className="contact-action email-action" href={`mailto:${eventModal.organizerEmail}`}>Email Organizer</a>}
+                </div>
               </div>
 
               <div className="tier-section">
@@ -2426,6 +2452,45 @@ function App() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {lightboxIndex !== null && eventModalPhotos.length > 0 && (
+        <div className="lightbox-backdrop" onClick={closeEventLightbox} role="dialog" aria-modal="true" aria-label={`${eventModal.title} photo viewer`}>
+          <button type="button" className="lightbox-close" onClick={closeEventLightbox} aria-label="Close photo viewer">×</button>
+          {eventModalPhotos.length > 1 && (
+            <button
+              type="button"
+              className="lightbox-nav lightbox-prev"
+              onClick={(event) => {
+                event.stopPropagation()
+                setLightboxIndex((current) => (current - 1 + eventModalPhotos.length) % eventModalPhotos.length)
+              }}
+              aria-label="Previous photo"
+            >
+              ‹
+            </button>
+          )}
+          <img
+            className="lightbox-image"
+            src={eventModalPhotos[lightboxIndex]}
+            alt={`${eventModal.title} enlarged photo ${lightboxIndex + 1}`}
+            onClick={(event) => event.stopPropagation()}
+          />
+          {eventModalPhotos.length > 1 && (
+            <button
+              type="button"
+              className="lightbox-nav lightbox-next"
+              onClick={(event) => {
+                event.stopPropagation()
+                setLightboxIndex((current) => (current + 1) % eventModalPhotos.length)
+              }}
+              aria-label="Next photo"
+            >
+              ›
+            </button>
+          )}
+          <div className="lightbox-counter">{lightboxIndex + 1} / {eventModalPhotos.length}</div>
         </div>
       )}
 

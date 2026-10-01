@@ -808,11 +808,22 @@ button {
 }
 
 .map-link {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
   margin-top: 0.5rem;
-  color: #0d4a2b;
+  padding: 0.65rem 0.85rem;
+  border-radius: 0.7rem;
+  background: #dcfce7;
+  color: #166534;
   font-weight: 700;
   text-decoration: none;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.map-link:hover {
+  background: #bbf7d0;
+  transform: translateY(-1px);
 }
 
 .compact-form {
@@ -1738,14 +1749,15 @@ th {
 }
 
 .info-list li {
-  position: relative;
-  padding-left: 1.1rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  min-width: 0;
+  line-height: 1.4;
 }
 
-.info-list li::before {
-  content: '✓';
-  position: absolute;
-  left: 0;
+.inclusion-check {
+  flex: 0 0 auto;
   color: #0d4a2b;
   font-weight: 900;
 }
@@ -1776,6 +1788,58 @@ th {
   border: 1px solid #f5d48d;
   color: #734e00;
   font-weight: 700;
+}
+
+.organizer-contact-card {
+  padding: 1rem;
+  border: 1px solid #dce9e2;
+  border-radius: 1rem;
+  background: #f4fbf6;
+}
+
+.organizer-contact-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  color: #16352a;
+}
+
+.modal-verified {
+  padding: 0.3rem 0.55rem;
+  letter-spacing: 0.04em;
+}
+
+.organizer-contact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.8rem;
+}
+
+.contact-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.3rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.7rem;
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.whatsapp-action {
+  background: #15803d;
+}
+
+.phone-action {
+  background: #166534;
+}
+
+.email-action {
+  background: #475569;
 }
 
 .tier-section {
@@ -2182,17 +2246,108 @@ th {
 
 .photo-gallery {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 0.7rem;
   margin-top: 0.5rem;
 }
 
+.gallery-button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0.9rem;
+  background: transparent;
+  cursor: zoom-in;
+  overflow: hidden;
+}
+
 .gallery-image {
   width: 100%;
-  height: 120px;
+  aspect-ratio: 16 / 9;
+  height: auto;
   object-fit: cover;
   border-radius: 0.9rem;
   border: 1px solid #e7e5e4;
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.gallery-button:hover .gallery-image,
+.gallery-button:focus-visible .gallery-image {
+  transform: scale(1.03);
+  filter: brightness(1.05);
+}
+
+.lightbox-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3.5rem 4.5rem;
+  background: rgba(2, 6, 23, 0.92);
+}
+
+.lightbox-image {
+  max-width: min(92vw, 1100px);
+  max-height: 86vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 0.8rem;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+}
+
+.lightbox-close,
+.lightbox-nav {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.72);
+  color: #fff;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.lightbox-close {
+  top: 1rem;
+  right: 1rem;
+  width: 2.7rem;
+  height: 2.7rem;
+  font-size: 1.7rem;
+}
+
+.lightbox-nav {
+  top: 50%;
+  width: 3rem;
+  height: 3rem;
+  font-size: 2.4rem;
+  line-height: 1;
+  transform: translateY(-50%);
+}
+
+.lightbox-prev {
+  left: 1rem;
+}
+
+.lightbox-next {
+  right: 1rem;
+}
+
+.lightbox-counter {
+  position: absolute;
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #fff;
+  font-size: 0.78rem;
 }
 
 .create-actions {
@@ -2386,6 +2541,28 @@ th {
     padding: 0.75rem;
   }
 
+  .lightbox-backdrop {
+    padding: 3.5rem 0.75rem;
+  }
+
+  .lightbox-image {
+    max-width: 100%;
+    max-height: 78vh;
+  }
+
+  .lightbox-nav {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+
+  .lightbox-prev {
+    left: 0.4rem;
+  }
+
+  .lightbox-next {
+    right: 0.4rem;
+  }
+
   .event-modal,
   .create-modal,
   .ticket-modal,
@@ -2493,6 +2670,14 @@ th {
   .primary-btn,
   .secondary-btn,
   .ghost-btn {
+    width: 100%;
+  }
+
+  .organizer-contact-actions {
+    flex-direction: column;
+  }
+
+  .contact-action {
     width: 100%;
   }
 
