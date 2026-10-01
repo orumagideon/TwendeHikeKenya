@@ -483,7 +483,7 @@ function signToken(user) {
 }
 
 app.get('/api/v1/public/health', (_req, res) => {
-  res.json({ success: true, data: { status: 'ok', service: 'twendehike-backend' } });
+  return res.json({ success: true, data: { status: 'ok', service: 'twendehike-backend' } });
 });
 
 app.get('/api/v1/public/settings', async (_req, res) => {
@@ -611,6 +611,7 @@ app.get('/api/v1/public/events', async (req, res) => {
           return matchesCounty && matchesPrice && matchesSearch;
         }).map(buildPublicEvent);
       });
+      return res.json({ success: true, data: payload });
     } else {
       const filtered = events.filter((event) => {
         const matchesCounty = countyId ? String(event.countyId) === String(countyId) : true;
@@ -621,11 +622,11 @@ app.get('/api/v1/public/events', async (req, res) => {
       });
 
       payload = filtered.map(buildPublicEvent);
+      return res.json({ success: true, data: payload });
     }
-
-    return res.json({ success: true, data: payload });
   } catch (error) {
     console.error('Error in GET /api/v1/public/events:', error);
+    if (res.headersSent) return;
     return res.status(500).json({ success: false, message: error.message || 'Unable to load events.' });
   }
 });
@@ -1712,7 +1713,7 @@ app.get('/api/v1/bookings/:bookingId/ticket.pdf', authMiddleware, async (req, re
 });
 
 app.use((req, res) => {
-  res.status(404).json({ success: false, message: `Route not found: ${req.originalUrl}` });
+  return res.status(404).json({ success: false, message: `Route not found: ${req.originalUrl}` });
 });
 
 app.listen(config.port, async () => {

@@ -678,6 +678,11 @@ button {
   gap: 8px;
   overflow-x: auto;
   white-space: nowrap;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
   padding-bottom: 6px;
   scrollbar-width: none;
 }
