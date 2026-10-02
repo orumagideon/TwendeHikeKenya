@@ -11,6 +11,7 @@ const DEFAULT_EVENT_IMAGE = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.or
 
 const DEFAULT_HERO_SETTINGS = {
   heroBgMode: 'color',
+  heroImageOpacity: 0.5,
   heroImageUrl: '',
   heroOverlayColor: '#064e3b',
   heroHeadline: 'Conquer the Aberdares, Longonot & Mt. Kenya.',
@@ -683,6 +684,7 @@ function App() {
           heroSubtitle: heroData.subtitle || heroData.heroSubtitle || DEFAULT_HERO_SETTINGS.heroSubtitle,
           heroBadge: heroData.badge || heroData.heroBadge || DEFAULT_HERO_SETTINGS.heroBadge,
           heroBgMode: heroData.bg_mode || heroData.heroBgMode || (heroData.bg_image ? 'image' : 'color'),
+          heroImageOpacity: Number.isFinite(Number(heroData.image_opacity)) && heroData.image_opacity !== null && heroData.image_opacity !== undefined ? Number(heroData.image_opacity) : 0.5,
           heroImageUrl: heroData.bg_image || heroData.heroImageUrl || DEFAULT_HERO_SETTINGS.heroImageUrl,
           heroOverlayColor: heroData.bg_color || heroData.heroOverlayColor || DEFAULT_HERO_SETTINGS.heroOverlayColor,
         }
@@ -1508,6 +1510,15 @@ function App() {
     }
   }
 
+  const handleRemoveHeroImage = () => {
+    setHeroSettingsForm((prev) => ({ ...prev, heroImageUrl: '', heroBgMode: 'color' }))
+  }
+
+  const handleReplaceHeroImage = () => {
+    setHeroSettingsForm((prev) => ({ ...prev, heroImageUrl: '' }))
+    setTimeout(() => document.getElementById('hero-image-file')?.click(), 0)
+  }
+
   const handleHeroImageFile = (event) => {
     const file = event.target.files?.[0]
     if (!file) return
@@ -1539,6 +1550,7 @@ function App() {
         subtitle: heroSettingsForm.heroSubtitle,
         badge: heroSettingsForm.heroBadge,
         bg_mode: heroSettingsForm.heroBgMode,
+        image_opacity: heroSettingsForm.heroImageOpacity,
         bg_image: heroSettingsForm.heroImageUrl,
         bg_color: heroSettingsForm.heroOverlayColor,
       })
@@ -1552,6 +1564,7 @@ function App() {
         heroSubtitle: updatedSettings.subtitle || DEFAULT_HERO_SETTINGS.heroSubtitle,
         heroBadge: updatedSettings.badge || DEFAULT_HERO_SETTINGS.heroBadge,
         heroBgMode: updatedSettings.bg_mode || 'color',
+        heroImageOpacity: Number(updatedSettings.image_opacity ?? 0.5),
         heroImageUrl: updatedSettings.bg_image || '',
         heroOverlayColor: updatedSettings.bg_color || DEFAULT_HERO_SETTINGS.heroOverlayColor,
       }
@@ -1671,18 +1684,33 @@ function App() {
           <section className="discover-view">
             <div
               className="hero-banner"
-              style={{
-                backgroundColor: heroSettings.heroOverlayColor || DEFAULT_HERO_SETTINGS.heroOverlayColor,
-                background: heroSettings.heroOverlayColor || DEFAULT_HERO_SETTINGS.heroOverlayColor,
-                ...(heroSettings.heroBgMode === 'image' && heroSettings.heroImageUrl
-                  ? {
-                      backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.65)), url(${heroSettings.heroImageUrl})`,
+              style={{ background: heroSettings.heroOverlayColor || DEFAULT_HERO_SETTINGS.heroOverlayColor }}
+            >
+              {heroSettings.heroBgMode === 'image' && heroSettings.heroImageUrl && (
+                <>
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      backgroundImage: `url(${heroSettings.heroImageUrl})`,
                       backgroundSize: 'cover',
                       backgroundPosition: 'center',
-                    }
-                  : {}),
-              }}
-            >
+                      opacity: heroSettings.heroImageOpacity ?? 0.5,
+                      pointerEvents: 'none',
+                    }}
+                  />
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      background: 'linear-gradient(to top, rgba(0,0,0,0.7), rgba(0,0,0,0.3) 50%, rgba(0,0,0,0.4))',
+                      pointerEvents: 'none',
+                    }}
+                  />
+                </>
+              )}
               <div className="hero-content">
                 <div className="hero-pill">{heroSettings.heroBadge || DEFAULT_HERO_SETTINGS.heroBadge}</div>
                 <h1>{heroSettings.heroHeadline || DEFAULT_HERO_SETTINGS.heroHeadline}</h1>
@@ -2445,7 +2473,7 @@ function App() {
                   {heroSettingsForm.heroBgMode === 'image' ? (
                     <div className="field-group">
                       <label>Upload Image from Computer</label>
-                      <input type="file" accept="image/*" onChange={handleHeroImageFile} />
+                      <input id="hero-image-file" type="file" accept="image/*" onChange={handleHeroImageFile} />
                       <label>Or Image URL</label>
                       <input
                         type="text"
@@ -2454,7 +2482,31 @@ function App() {
                         placeholder="https://images.example.com/hero.jpg"
                       />
                       {heroSettingsForm.heroImageUrl && (
-                        <img src={heroSettingsForm.heroImageUrl} alt="Hero preview" style={{ maxWidth: '240px', borderRadius: '12px', marginTop: '0.5rem' }} />
+                        <>
+                          <div style={{ position: 'relative', maxWidth: '240px', marginTop: '0.5rem', background: heroSettingsForm.heroOverlayColor, borderRadius: '12px', overflow: 'hidden' }}>
+                            <img src={heroSettingsForm.heroImageUrl} alt="Hero preview" style={{ display: 'block', width: '100%', opacity: heroSettingsForm.heroImageOpacity ?? 0.5 }} />
+                          </div>
+                          <div className="queue-actions" style={{ marginTop: '0.5rem' }}>
+                            <button type="button" className="ghost-btn small" onClick={handleReplaceHeroImage}>Replace Image</button>
+                            <button type="button" className="ghost-btn small" style={{ background: '#dc2626', color: '#fff', borderColor: '#dc2626' }} onClick={handleRemoveHeroImage}>🗑 Remove Image</button>
+                          </div>
+                          <div style={{ marginTop: '0.75rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: 600 }}>
+                              <label>Image Overlay / Dimming</label>
+                              <span>{Math.round((heroSettingsForm.heroImageOpacity ?? 0.5) * 100)}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0.1"
+                              max="1"
+                              step="0.05"
+                              value={heroSettingsForm.heroImageOpacity ?? 0.5}
+                              onChange={(event) => setHeroSettingsForm((prev) => ({ ...prev, heroImageOpacity: parseFloat(event.target.value) }))}
+                              style={{ width: '100%', accentColor: '#059669', cursor: 'pointer' }}
+                            />
+                            <small>Controls how prominently the background image shows beneath the text overlay.</small>
+                          </div>
+                        </>
                       )}
                     </div>
                   ) : (

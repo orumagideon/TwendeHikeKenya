@@ -532,6 +532,7 @@ app.get('/api/v1/public/settings/hero', async (_req, res) => {
     subtitle: 'Verified trail captains, licensed KWS rangers, pickup from Nairobi CBD, and seamless booking with Lipa na M-PESA.',
     badge: "KENYA'S #1 TRAIL MARKETPLACE",
     bg_mode: 'color',
+    image_opacity: 0.5,
     bg_image: '',
     bg_color: '#064e3b',
   };
@@ -1295,6 +1296,7 @@ app.put('/api/v1/admin/settings/hero', authMiddleware, requireRoles('super_admin
     subtitle: String(req.body?.subtitle || '').trim() || 'Verified trail captains, licensed KWS rangers, pickup from Nairobi CBD, and seamless booking with Lipa na M-PESA.',
     badge: String(req.body?.badge || '').trim() || "KENYA'S #1 TRAIL MARKETPLACE",
     bg_mode: req.body?.bg_mode === 'image' ? 'image' : 'color',
+    image_opacity: Number.isFinite(Number(req.body?.image_opacity)) ? Math.min(1, Math.max(0.1, Number(req.body.image_opacity))) : 0.5,
     bg_image: String(req.body?.bg_image || '').trim(),
     bg_color: String(req.body?.bg_color || '#064e3b').trim(),
   };
