@@ -19,6 +19,17 @@ const DEFAULT_HERO_SETTINGS = {
   heroBadge: "KENYA'S #1 TRAIL MARKETPLACE",
 }
 
+const Icon = ({ name, size = 18 }) => (
+  <img
+    src={`/${name}`}
+    alt=""
+    aria-hidden="true"
+    width={size}
+    height={size}
+    style={{ width: size, height: size, objectFit: 'contain', verticalAlign: 'middle', marginRight: '0.35em', display: 'inline-block' }}
+  />
+)
+
 const safeSetItem = (key, value) => {
   if (typeof window === 'undefined') return
   try {
@@ -1599,11 +1610,12 @@ function App() {
     <div className={`app-shell ${darkMode ? 'theme-dark' : ''}`}>
       <header className="topbar sticky top-0 z-50 w-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm">
         <button type="button" className="header-theme-toggle" onClick={() => setDarkMode((value) => !value)} aria-label={darkMode ? 'Use light theme' : 'Use dark theme'}>
-          <span className="theme-icon" aria-hidden="true">{darkMode ? '☀️' : '🌙'}</span>
+          <span className="theme-icon" aria-hidden="true"><Icon name={darkMode ? 'sun.svg' : 'moon.svg'} size={20} /></span>
           <span className="theme-label">{darkMode ? 'Light' : 'Dark'}</span>
         </button>
 
         <div className="brand-wrap" onClick={() => setActiveView('discover')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setActiveView('discover')}>
+          <img src="/twendehike.png" alt="Twende Hike Kenya logo" width={40} height={40} style={{ width: 40, height: 40, objectFit: 'contain', marginRight: '0.6rem' }} />
           <div className="brand-copy">
             <span className="brand-name">TWENDE<span className="brand-accent">HIKE</span></span>
             <span className="brand-sub">Kenya Trails</span>
@@ -1726,11 +1738,11 @@ function App() {
                       className={`tag-pill ${activeTag === tag ? 'selected' : ''}`}
                       onClick={() => setActiveTag(tag)}
                     >
-                      {tag === 'all' && 'All Trails'}
-                      {tag === 'beginner' && '🌿 Beginner Friendly'}
-                      {tag === 'aberdares' && '🏔️ Aberdares Hardcore'}
-                      {tag === 'prep' && '🧗 Mt. Kenya Prep'}
-                      {tag === 'nairobi' && '📍 Near Nairobi (<90min)'}
+                      {tag === 'all' && <><Icon name="all-trails.svg" />All Trails</>}
+                      {tag === 'beginner' && <><Icon name="beginner.png" />Beginner Friendly</>}
+                      {tag === 'aberdares' && <><Icon name="mountain1.svg" />Aberdares Hardcore</>}
+                      {tag === 'prep' && <><Icon name="mountain2-ice.svg" />Mt. Kenya Prep</>}
+                      {tag === 'nairobi' && <><Icon name="Location.svg" />Near Nairobi (&lt;90min)</>}
                     </button>
                   ))}
                 </div>
@@ -1904,7 +1916,7 @@ function App() {
                       <div className="card-image-wrap" style={{ backgroundImage: `url(${hike.image})` }}>
                         <div className="card-badges">
                           <span className={`badge-chip ${renderDifficultyBadge(hike.difficulty)}`}>{hike.difficulty}</span>
-                          <span className="badge-chip light">📍 {hike.county}</span>
+                          <span className="badge-chip light"><Icon name="Location.svg" size={14} />{hike.county}</span>
                         </div>
                         <button
                           type="button"
@@ -2795,11 +2807,11 @@ function App() {
 
               <div className="modal-section">
                 <h4>Meeting &amp; Pickup Point</h4>
-                <p className="pickup-note">📍 {eventModal.meetingPoint || eventModal.pickup || eventModal.locationText}</p>
-                <p className="pickup-note">🕒 {eventModal.pickupTime || eventModal.departure || '05:30 AM'}</p>
+                <p className="pickup-note"><Icon name="Location.svg" size={16} />{eventModal.meetingPoint || eventModal.pickup || eventModal.locationText}</p>
+                <p className="pickup-note"><Icon name="clock-solid-full.svg" size={16} />{eventModal.pickupTime || eventModal.departure || '05:30 AM'}</p>
                 {eventModal.googleMapUrl && (
                   <a className="map-link" href={eventModal.googleMapUrl} target="_blank" rel="noopener noreferrer">
-                    📍 Open in Google Maps ↗
+                    <Icon name="Location.svg" size={16} />Open in Google Maps ↗
                   </a>
                 )}
               </div>
