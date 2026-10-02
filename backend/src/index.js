@@ -246,7 +246,9 @@ async function ensureDatabaseSchema() {
     )`,
     `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS key VARCHAR(50)`,
     `ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS value JSONB`,
-    `CREATE UNIQUE INDEX IF NOT EXISTS site_settings_key_unique ON site_settings(key) WHERE key IS NOT NULL`,
+    `DROP INDEX IF EXISTS site_settings_key_unique`,
+    `DELETE FROM site_settings a USING site_settings b WHERE a.key IS NOT NULL AND a.key = b.key AND a.ctid < b.ctid`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS site_settings_key_unique ON site_settings(key)`,
     `INSERT INTO site_settings (id, key, value)
      VALUES (1, 'hero', '{"title":"Conquer the Aberdares, Longonot & Mt. Kenya.","subtitle":"Verified trail captains, licensed KWS rangers, pickup from Nairobi CBD, and seamless booking with Lipa na M-PESA.","badge":"KENYA''S #1 TRAIL MARKETPLACE","bg_image":"","bg_color":"#064e3b"}'::jsonb)
      ON CONFLICT (id) DO UPDATE SET key = COALESCE(site_settings.key, EXCLUDED.key), value = COALESCE(site_settings.value, EXCLUDED.value)`,
@@ -1297,13 +1299,14 @@ app.put('/api/v1/admin/settings/hero', authMiddleware, requireRoles('super_admin
 
   try {
     if (!config.databaseUrl) return res.json({ success: true, data: value });
-    const result = await query(`
-      INSERT INTO site_settings (key, value, updated_at)
-      VALUES ('hero', $1::jsonb, NOW())
-      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-      RETURNING key, value
-    `, [JSON.stringify(value)]);
-    return res.json({ success: true, data: { key: result.rows[0].key, ...result.rows[0].value } });
+    const payload = JSON.stringify(value);
+    const existing = await query(`SELECT 1 FROM site_settings WHERE key = 'hero'`);
+    if (existing.rows.length > 0) {
+      await query(`UPDATE site_settings SET value = $1::jsonb, updated_at = NOW() WHERE key = 'hero'`, [payload]);
+    } else {
+      await query(`INSERT INTO site_settings (key, value, updated_at) VALUES ('hero', $1::jsonb, NOW())`, [payload]);
+    }
+    return res.json({ success: true, message: 'Hero settings updated successfully', data: { key: 'hero', ...value } });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message || 'Unable to update hero settings.' });
   }
