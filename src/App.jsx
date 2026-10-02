@@ -319,6 +319,7 @@ function App() {
   const [adminPasswordForm, setAdminPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' })
   const [adminMessage, setAdminMessage] = useState('')
   const [heroSettings, setHeroSettings] = useState(DEFAULT_HERO_SETTINGS)
+  const [isSavingHero, setIsSavingHero] = useState(false)
   const [heroSettingsForm, setHeroSettingsForm] = useState(DEFAULT_HERO_SETTINGS)
   const [adminEvents, setAdminEvents] = useState([])
   const overlayHistoryRef = useRef(false)
@@ -368,7 +369,7 @@ function App() {
       setHikes(allEvents.filter((event) => ['approved', 'published'].includes(event.status)))
       const existingIds = new Set(allEvents.map((event) => event.id))
       setRemovedHikes((prev) => prev.filter((event) => existingIds.has(event.id)))
-      setCompletedHikes((prev) => prev.filter((event) => existingIds.has(event.id)))
+      setCompletedHikes(allEvents.filter((event) => event.status === 'completed'))
     } catch (error) {
       setAdminMessage(error.message || 'Unable to load admin events.')
     }
@@ -1263,30 +1264,30 @@ function App() {
     }
   }
 
-  const deleteEventFromAdmin = async (target) => {
-    if (!target) return
-    if (!target.id) {
-      showToast('This hike has no database ID and cannot be deleted.')
+  const handlePermanentDelete = async (eventId, eventTitle) => {
+    if (!eventId) {
+      alert('This hike has no database ID and cannot be deleted.')
       return
     }
-    if (!window.confirm('Are you sure you want to permanently delete this event? This action cannot be undone.')) return
+    const confirmed = window.confirm(
+      `Are you sure you want to permanently delete "${eventTitle}"? This will remove all bookings, images, and data from the database permanently.`
+    )
+    if (!confirmed) return
 
     try {
-      const response = await api.deletePermanentEvent(target.id)
-      if (!response?.success) {
-        throw new Error(response?.message || 'The event was not deleted.')
+      const res = await api.deletePermanentEvent(eventId)
+      if (res?.success) {
+        alert('Event permanently removed from database.')
+        await fetchAdminEvents()
+      } else {
+        alert('Failed to delete: ' + (res?.message || 'Unknown server error'))
       }
-      setHikes((prev) => prev.filter((item) => item.id !== target.id))
-      setApprovedHikes((prev) => prev.filter((item) => item.id !== target.id))
-      setPendingHikes((prev) => prev.filter((item) => item.id !== target.id))
-      setRemovedHikes((prev) => prev.filter((item) => item.id !== target.id))
-      setCompletedHikes((prev) => prev.filter((item) => item.id !== target.id))
-      showToast(`${target.title} was permanently deleted.`)
-      await fetchAdminEvents()
-    } catch (error) {
-      showToast(error.message || 'Unable to delete this hike.')
+    } catch (err) {
+      alert('Network/Server error: ' + err.message)
     }
   }
+
+  const deleteEventFromAdmin = (target) => (target ? handlePermanentDelete(target.id, target.title) : undefined)
 
   const removeApprovedHike = (index, fromRemoved = false) => {
     const target = fromRemoved ? removedHikes[index] : (approvedHikes[index] || hikes[index])
@@ -1302,14 +1303,18 @@ function App() {
     showToast(`${target.title} moved to the removed hikes list.`)
   }
 
-  const completeApprovedHike = (index) => {
+  const completeApprovedHike = async (index) => {
     const target = approvedHikes[index] || hikes[index]
     if (!target) return
 
-    setCompletedHikes((prev) => [target, ...prev])
-    setApprovedHikes((prev) => prev.filter((_, idx) => idx !== index))
-    setHikes((prev) => prev.filter((item) => item.id !== target.id))
-    showToast(`${target.title} marked complete.`)
+    try {
+      const res = await api.completeEvent(target.id)
+      if (!res?.success) throw new Error(res?.message || 'Unable to complete hike.')
+      await fetchAdminEvents()
+      showToast(`${target.title} marked complete.`)
+    } catch (error) {
+      showToast(error.message || 'Unable to complete hike.')
+    }
   }
 
   const permanentlyDeleteHike = (index, listType = 'removed') => {
@@ -1513,7 +1518,9 @@ function App() {
   }
 
   const handleHeroSettingsUpdate = async (event) => {
-    event.preventDefault()
+    if (event) event.preventDefault()
+    console.log('Saving hero settings:', heroSettingsForm)
+    setIsSavingHero(true)
 
     try {
       const response = await api.updateHeroSettings({
@@ -1538,8 +1545,13 @@ function App() {
       setHeroSettings(nextSettings)
       setHeroSettingsForm(nextSettings)
       showToast('Hero banner settings updated.')
+      alert('Hero banner settings saved successfully!')
     } catch (error) {
+      console.error('Error saving hero settings:', error)
       setAdminMessage(error.message || 'Unable to update hero settings.')
+      alert('Failed to save hero settings: ' + (error.message || 'Server error'))
+    } finally {
+      setIsSavingHero(false)
     }
   }
 
@@ -1647,8 +1659,11 @@ function App() {
             <div
               className="hero-banner"
               style={heroSettings.heroImageUrl ? {
+                backgroundColor: heroSettings.heroOverlayColor || DEFAULT_HERO_SETTINGS.heroOverlayColor,
                 backgroundImage: `linear-gradient(90deg, ${heroSettings.heroOverlayColor || DEFAULT_HERO_SETTINGS.heroOverlayColor} 0%, rgba(6, 45, 31, 0.45) 62%, rgba(6, 45, 31, 0.15) 100%), url(${heroSettings.heroImageUrl})`,
-              } : undefined}
+              } : {
+                background: heroSettings.heroOverlayColor || DEFAULT_HERO_SETTINGS.heroOverlayColor,
+              }}
             >
               <div className="hero-content">
                 <div className="hero-pill">{heroSettings.heroBadge || DEFAULT_HERO_SETTINGS.heroBadge}</div>
@@ -2357,7 +2372,10 @@ function App() {
                       <strong>{event.title}</strong>
                       <p>{event.county} County • {event.status} • {event.date || 'Upcoming'}</p>
                     </div>
-                    <span className="status-pill">{event.status}</span>
+                    <div className="queue-actions">
+                      <span className="status-pill">{event.status}</span>
+                      <button type="button" className="ghost-btn small" style={{ background: '#dc2626', color: '#fff', borderColor: '#dc2626' }} onClick={() => handlePermanentDelete(event.id, event.title)}>Delete Permanently</button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -2402,6 +2420,11 @@ function App() {
                   <div className="field-group">
                     <label>Hero Overlay Color</label>
                     <input
+                      type="color"
+                      value={/^#[0-9a-f]{6}$/i.test(heroSettingsForm.heroOverlayColor || '') ? heroSettingsForm.heroOverlayColor : '#064e3b'}
+                      onChange={(event) => setHeroSettingsForm((prev) => ({ ...prev, heroOverlayColor: event.target.value }))}
+                    />
+                    <input
                       type="text"
                       value={heroSettingsForm.heroOverlayColor}
                       onChange={(event) => setHeroSettingsForm((prev) => ({ ...prev, heroOverlayColor: event.target.value }))}
@@ -2409,7 +2432,7 @@ function App() {
                     />
                   </div>
                   <div className="create-actions">
-                    <button type="submit" className="primary-btn small">Save Hero Settings</button>
+                    <button type="button" className="primary-btn small" disabled={isSavingHero} onClick={handleHeroSettingsUpdate}>{isSavingHero ? 'Saving...' : 'Save Hero Settings'}</button>
                   </div>
                 </form>
               </div>

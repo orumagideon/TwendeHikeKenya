@@ -112,6 +112,9 @@ export const api = {
 
   getAdminEvents: () => request('/admin/events'),
 
+  completeEvent: (eventId) =>
+    request(`/admin/events/${eventId}/complete`, { method: 'PATCH' }),
+
   deletePermanentEvent: (eventId) =>
     request(`/admin/events/${eventId}`, {
       method: 'DELETE',

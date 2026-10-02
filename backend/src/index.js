@@ -510,6 +510,20 @@ app.get('/api/v1/public/settings', async (_req, res) => {
   }
 });
 
+const autoCompletePastEvents = async () => {
+  if (!config.databaseUrl) return;
+  try {
+    await query(`
+      UPDATE events
+      SET status = 'completed', updated_at = NOW()
+      WHERE status IN ('approved', 'published')
+        AND event_date < CURRENT_DATE
+    `);
+  } catch (err) {
+    console.error('Auto-complete past events error:', err);
+  }
+};
+
 app.get('/api/v1/public/settings/hero', async (_req, res) => {
   const fallback = {
     title: 'Conquer the Aberdares, Longonot & Mt. Kenya.',
@@ -547,6 +561,7 @@ app.get('/api/v1/public/events', async (req, res) => {
     let payload = [];
 
     if (config.databaseUrl) {
+      await autoCompletePastEvents();
       await withSchemaRetry(async () => {
         const likeResult = await query(`
           SELECT event_id, COUNT(*)::int AS likes_count
@@ -573,7 +588,10 @@ app.get('/api/v1/public/events', async (req, res) => {
             LIMIT 1
           ) cover ON TRUE
           WHERE e.status IN ('published', 'approved')
+            AND e.status NOT IN ('completed', 'rejected', 'archived')
+            AND e.event_date >= CURRENT_DATE
           GROUP BY e.id, c.name, cover.image_url
+          ORDER BY e.event_date ASC
         `);
 
         const rows = result.rows.map((row) => ({
@@ -1460,6 +1478,7 @@ app.get('/api/v1/admin/events', authMiddleware, requireRoles('super_admin'), asy
     if (!config.databaseUrl) {
       return res.json({ success: true, data: events.map(buildPublicEvent) });
     }
+    await autoCompletePastEvents();
     const result = await query(`
       SELECT e.*, c.name AS county_name
       FROM events e
@@ -1478,6 +1497,29 @@ app.get('/api/v1/admin/events', authMiddleware, requireRoles('super_admin'), asy
     return res.json({ success: true, data });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message || 'Unable to load admin events.' });
+  }
+});
+
+app.patch('/api/v1/admin/events/:id/complete', authMiddleware, requireRoles('super_admin'), async (req, res) => {
+  const eventId = String(req.params.id || '').trim();
+  if (!isUuid(eventId)) {
+    return res.status(400).json({ success: false, message: 'Invalid event ID.' });
+  }
+  try {
+    if (config.databaseUrl) {
+      const result = await query(
+        `UPDATE events SET status = 'completed', updated_at = NOW() WHERE id = $1 RETURNING id`,
+        [eventId]
+      );
+      if (result.rows.length === 0) {
+        return res.status(404).json({ success: false, message: 'Event not found.' });
+      }
+    }
+    const event = events.find((entry) => entry.id === eventId);
+    if (event) event.status = 'completed';
+    return res.json({ success: true, message: 'Event marked as completed.' });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message || 'Unable to complete event.' });
   }
 });
 
@@ -1717,10 +1759,12 @@ app.use((req, res) => {
 });
 
 app.listen(config.port, async () => {
+  setInterval(autoCompletePastEvents, 60 * 60 * 1000);
   try {
     await ensureDatabaseSchema();
     await seedKenyanCounties();
     await ensureDefaultSuperAdmin();
+    await autoCompletePastEvents();
     console.log(`Twende Hike Kenya backend listening on port ${config.port}`);
   } catch (error) {
     console.error('Database bootstrap failed:', error.message || error);
