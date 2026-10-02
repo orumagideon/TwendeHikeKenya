@@ -358,18 +358,25 @@ function App() {
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
 
+  const fetchAdminEvents = async () => {
+    try {
+      const response = await api.getAdminEvents()
+      const allEvents = getApiArray(response).map((event, index) => normalizeEvent(event, index))
+      setAdminEvents(allEvents)
+      setPendingHikes(allEvents.filter((event) => event.status === 'pending_approval'))
+      setApprovedHikes(allEvents.filter((event) => ['approved', 'published'].includes(event.status)))
+      setHikes(allEvents.filter((event) => ['approved', 'published'].includes(event.status)))
+      const existingIds = new Set(allEvents.map((event) => event.id))
+      setRemovedHikes((prev) => prev.filter((event) => existingIds.has(event.id)))
+      setCompletedHikes((prev) => prev.filter((event) => existingIds.has(event.id)))
+    } catch (error) {
+      setAdminMessage(error.message || 'Unable to load admin events.')
+    }
+  }
+
   useEffect(() => {
     if (activeView !== 'admin' || authUser?.role !== 'super_admin') return
-
-    api.getAdminEvents()
-      .then((response) => {
-        const allEvents = getApiArray(response).map((event, index) => normalizeEvent(event, index))
-        setAdminEvents(allEvents)
-        setPendingHikes(allEvents.filter((event) => event.status === 'pending_approval'))
-        setApprovedHikes(allEvents.filter((event) => ['approved', 'published'].includes(event.status)))
-        setHikes(allEvents.filter((event) => ['approved', 'published'].includes(event.status)))
-      })
-      .catch((error) => setAdminMessage(error.message || 'Unable to load admin events.'))
+    fetchAdminEvents()
   }, [activeView, authUser])
 
   const getStoredHikerAccounts = () => {
@@ -1262,9 +1269,10 @@ function App() {
       showToast('This hike has no database ID and cannot be deleted.')
       return
     }
+    if (!window.confirm('Are you sure you want to permanently delete this event? This action cannot be undone.')) return
 
     try {
-      const response = await api.deleteEvent(target.id)
+      const response = await api.deletePermanentEvent(target.id)
       if (!response?.success) {
         throw new Error(response?.message || 'The event was not deleted.')
       }
@@ -1274,6 +1282,7 @@ function App() {
       setRemovedHikes((prev) => prev.filter((item) => item.id !== target.id))
       setCompletedHikes((prev) => prev.filter((item) => item.id !== target.id))
       showToast(`${target.title} was permanently deleted.`)
+      await fetchAdminEvents()
     } catch (error) {
       showToast(error.message || 'Unable to delete this hike.')
     }
@@ -2545,7 +2554,7 @@ function App() {
                       <p>{hike.organizer} • {hike.county} County • {hike.maxTickets} max tickets</p>
                     </div>
                     <div className="queue-actions">
-                      <button type="button" className="ghost-btn small" onClick={() => deleteEventFromAdmin(hike)}>Delete</button>
+                      <button type="button" className="ghost-btn small" style={{ background: '#dc2626', color: '#fff', borderColor: '#dc2626' }} onClick={() => deleteEventFromAdmin(hike)}>Delete Permanently</button>
                       <button type="button" className="ghost-btn small" onClick={() => completeApprovedHike(index)}>Complete</button>
                     </div>
                   </div>
@@ -2563,7 +2572,7 @@ function App() {
                       </div>
                       <div className="queue-actions">
                         <button type="button" className="ghost-btn small" onClick={() => removeApprovedHike(index, true)}>Restore</button>
-                        <button type="button" className="ghost-btn small" onClick={() => permanentlyDeleteHike(index, 'removed')}>Delete</button>
+                        <button type="button" className="ghost-btn small" style={{ background: '#dc2626', color: '#fff', borderColor: '#dc2626' }} onClick={() => permanentlyDeleteHike(index, 'removed')}>Delete Permanently</button>
                       </div>
                     </div>
                   ))}
@@ -2577,7 +2586,7 @@ function App() {
                         <strong>{hike.title}</strong>
                         <small>{hike.organizer}</small>
                       </div>
-                      <button type="button" className="ghost-btn small" onClick={() => permanentlyDeleteHike(index, 'completed')}>Delete</button>
+                      <button type="button" className="ghost-btn small" style={{ background: '#dc2626', color: '#fff', borderColor: '#dc2626' }} onClick={() => permanentlyDeleteHike(index, 'completed')}>Delete Permanently</button>
                     </div>
                   ))}
                 </div>
