@@ -717,6 +717,7 @@ button {
   display: flex;
   gap: 8px;
   overflow-x: auto;
+  flex-wrap: nowrap;
   white-space: nowrap;
   width: 100%;
   max-width: 100%;
@@ -732,6 +733,8 @@ button {
 }
 
 .tag-pill {
+  flex-shrink: 0;
+  white-space: nowrap;
   padding: 0.55rem 0.8rem;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px;

@@ -10,6 +10,7 @@ const DEFAULT_HIKER = {
 const DEFAULT_EVENT_IMAGE = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%221200%22 height=%22800%22 viewBox=%220 0 1200 800%22%3E%3Crect width=%221200%22 height=%22800%22 fill=%22%23e7e5e4%22/%3E%3Cpath d=%22M0 620 260 400l180 130 190-250 310 340 260-180v360H0z%22 fill=%22%23a8a29e%22/%3E%3Ccircle cx=%22930%22 cy=%22180%22 r=%2270%22 fill=%22%23d6d3d1%22/%3E%3C/svg%3E'
 
 const DEFAULT_HERO_SETTINGS = {
+  heroBgMode: 'color',
   heroImageUrl: '',
   heroOverlayColor: '#064e3b',
   heroHeadline: 'Conquer the Aberdares, Longonot & Mt. Kenya.',
@@ -299,8 +300,8 @@ function App() {
   })
   const [paymentReference, setPaymentReference] = useState('')
   const [checkoutPayment, setCheckoutPayment] = useState(null)
-  const [removedHikes, setRemovedHikes] = useState(() => readStorage(STORAGE_KEYS.removed, []))
-  const [completedHikes, setCompletedHikes] = useState(() => readStorage(STORAGE_KEYS.completed, []))
+  const [removedHikes, setRemovedHikes] = useState([])
+  const [completedHikes, setCompletedHikes] = useState([])
   const [ticketRequests, setTicketRequests] = useState([])
   const [uploadedEventImages, setUploadedEventImages] = useState([])
   const [organizerRatings, setOrganizerRatings] = useState({})
@@ -670,9 +671,6 @@ function App() {
           setAuthUser(storedUser)
         }
 
-        const fallbackApproved = readStorage(STORAGE_KEYS.approved, [])
-        const fallbackHikes = readStorage(STORAGE_KEYS.hikes, [])
-
         const [eventsResult, settingsResult] = await Promise.all([
           api.getPublicEvents(),
           api.getHeroSettings().catch(() => ({ data: DEFAULT_HERO_SETTINGS })),
@@ -684,16 +682,14 @@ function App() {
           heroHeadline: heroData.title || heroData.heroHeadline || DEFAULT_HERO_SETTINGS.heroHeadline,
           heroSubtitle: heroData.subtitle || heroData.heroSubtitle || DEFAULT_HERO_SETTINGS.heroSubtitle,
           heroBadge: heroData.badge || heroData.heroBadge || DEFAULT_HERO_SETTINGS.heroBadge,
+          heroBgMode: heroData.bg_mode || heroData.heroBgMode || (heroData.bg_image ? 'image' : 'color'),
           heroImageUrl: heroData.bg_image || heroData.heroImageUrl || DEFAULT_HERO_SETTINGS.heroImageUrl,
           heroOverlayColor: heroData.bg_color || heroData.heroOverlayColor || DEFAULT_HERO_SETTINGS.heroOverlayColor,
         }
         setHeroSettings({ ...DEFAULT_HERO_SETTINGS, ...loadedSettings })
         setHeroSettingsForm({ ...DEFAULT_HERO_SETTINGS, ...loadedSettings })
         const normalizedRemote = getApiArray(eventsResult).map((item, index) => normalizeEvent(item, index))
-        const safeFallbackApproved = Array.isArray(fallbackApproved) ? fallbackApproved : []
-        const safeFallbackHikes = Array.isArray(fallbackHikes) ? fallbackHikes : []
-        const fallbackList = safeFallbackApproved.length ? safeFallbackApproved : safeFallbackHikes
-        const mergedHikes = normalizedRemote.length ? normalizedRemote : fallbackList.map((item, index) => normalizeEvent(item, index))
+        const mergedHikes = normalizedRemote
 
         setHikes(mergedHikes)
         setApprovedHikes(mergedHikes)
@@ -712,13 +708,8 @@ function App() {
           })
         }
       } catch (error) {
-        const fallbackApproved = readStorage(STORAGE_KEYS.approved, [])
-        const fallbackHikes = readStorage(STORAGE_KEYS.hikes, [])
-        const safeFallbackApproved = Array.isArray(fallbackApproved) ? fallbackApproved : []
-        const safeFallbackHikes = Array.isArray(fallbackHikes) ? fallbackHikes : []
-        const persistedHikes = (safeFallbackApproved.length ? safeFallbackApproved : safeFallbackHikes).map((item, index) => normalizeEvent(item, index))
-        setHikes(persistedHikes)
-        setApprovedHikes(persistedHikes)
+        setHikes([])
+        setApprovedHikes([])
         showToast(error.message || 'Unable to load trail marketplace.')
       } finally {
         setAuthLoading(false)
@@ -1517,6 +1508,26 @@ function App() {
     }
   }
 
+  const handleHeroImageFile = (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const img = new Image()
+      img.onload = () => {
+        const scale = Math.min(1, 1920 / img.width, 1080 / img.height)
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.round(img.width * scale)
+        canvas.height = Math.round(img.height * scale)
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8)
+        setHeroSettingsForm((prev) => ({ ...prev, heroImageUrl: dataUrl }))
+      }
+      img.src = reader.result
+    }
+    reader.readAsDataURL(file)
+  }
+
   const handleHeroSettingsUpdate = async (event) => {
     if (event) event.preventDefault()
     console.log('Saving hero settings:', heroSettingsForm)
@@ -1527,6 +1538,7 @@ function App() {
         title: heroSettingsForm.heroHeadline,
         subtitle: heroSettingsForm.heroSubtitle,
         badge: heroSettingsForm.heroBadge,
+        bg_mode: heroSettingsForm.heroBgMode,
         bg_image: heroSettingsForm.heroImageUrl,
         bg_color: heroSettingsForm.heroOverlayColor,
       })
@@ -1539,6 +1551,7 @@ function App() {
         heroHeadline: updatedSettings.title || DEFAULT_HERO_SETTINGS.heroHeadline,
         heroSubtitle: updatedSettings.subtitle || DEFAULT_HERO_SETTINGS.heroSubtitle,
         heroBadge: updatedSettings.badge || DEFAULT_HERO_SETTINGS.heroBadge,
+        heroBgMode: updatedSettings.bg_mode || 'color',
         heroImageUrl: updatedSettings.bg_image || '',
         heroOverlayColor: updatedSettings.bg_color || DEFAULT_HERO_SETTINGS.heroOverlayColor,
       }
@@ -1658,11 +1671,16 @@ function App() {
           <section className="discover-view">
             <div
               className="hero-banner"
-              style={heroSettings.heroImageUrl ? {
+              style={{
                 backgroundColor: heroSettings.heroOverlayColor || DEFAULT_HERO_SETTINGS.heroOverlayColor,
-                backgroundImage: `linear-gradient(90deg, ${heroSettings.heroOverlayColor || DEFAULT_HERO_SETTINGS.heroOverlayColor} 0%, rgba(6, 45, 31, 0.45) 62%, rgba(6, 45, 31, 0.15) 100%), url(${heroSettings.heroImageUrl})`,
-              } : {
                 background: heroSettings.heroOverlayColor || DEFAULT_HERO_SETTINGS.heroOverlayColor,
+                ...(heroSettings.heroBgMode === 'image' && heroSettings.heroImageUrl
+                  ? {
+                      backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.65)), url(${heroSettings.heroImageUrl})`,
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center',
+                    }
+                  : {}),
               }}
             >
               <div className="hero-content">
@@ -1845,8 +1863,8 @@ function App() {
             <div className="card-grid">
               {filteredHikes.length === 0 ? (
                 <div className="empty-state">
-                  <h4>No expeditions found</h4>
-                  <p>Try relaxing your search criteria or reset the filters.</p>
+                  <h4>No upcoming expeditions found.</h4>
+                  <p>Check back soon, or try resetting the filters.</p>
                   <button type="button" className="secondary-btn" onClick={resetFilters}>Reset Filters</button>
                 </div>
               ) : (
@@ -2409,28 +2427,52 @@ function App() {
                     />
                   </div>
                   <div className="field-group">
-                    <label>Hero Background Image URL</label>
-                    <input
-                      type="url"
-                      value={heroSettingsForm.heroImageUrl}
-                      onChange={(event) => setHeroSettingsForm((prev) => ({ ...prev, heroImageUrl: event.target.value }))}
-                      placeholder="https://images.example.com/hero.jpg"
-                    />
+                    <label>Hero Background Type</label>
+                    <div className="tag-row filter-pills-container" style={{ marginTop: 0 }}>
+                      {[['color', 'Solid Color'], ['image', 'Background Image']].map(([mode, label]) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          className={`tag-pill ${heroSettingsForm.heroBgMode === mode ? 'selected' : ''}`}
+                          style={{ color: 'inherit' }}
+                          onClick={() => setHeroSettingsForm((prev) => ({ ...prev, heroBgMode: mode }))}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="field-group">
-                    <label>Hero Overlay Color</label>
-                    <input
-                      type="color"
-                      value={/^#[0-9a-f]{6}$/i.test(heroSettingsForm.heroOverlayColor || '') ? heroSettingsForm.heroOverlayColor : '#064e3b'}
-                      onChange={(event) => setHeroSettingsForm((prev) => ({ ...prev, heroOverlayColor: event.target.value }))}
-                    />
-                    <input
-                      type="text"
-                      value={heroSettingsForm.heroOverlayColor}
-                      onChange={(event) => setHeroSettingsForm((prev) => ({ ...prev, heroOverlayColor: event.target.value }))}
-                      placeholder="#062d1f"
-                    />
-                  </div>
+                  {heroSettingsForm.heroBgMode === 'image' ? (
+                    <div className="field-group">
+                      <label>Upload Image from Computer</label>
+                      <input type="file" accept="image/*" onChange={handleHeroImageFile} />
+                      <label>Or Image URL</label>
+                      <input
+                        type="text"
+                        value={heroSettingsForm.heroImageUrl.startsWith('data:') ? '' : heroSettingsForm.heroImageUrl}
+                        onChange={(event) => setHeroSettingsForm((prev) => ({ ...prev, heroImageUrl: event.target.value }))}
+                        placeholder="https://images.example.com/hero.jpg"
+                      />
+                      {heroSettingsForm.heroImageUrl && (
+                        <img src={heroSettingsForm.heroImageUrl} alt="Hero preview" style={{ maxWidth: '240px', borderRadius: '12px', marginTop: '0.5rem' }} />
+                      )}
+                    </div>
+                  ) : (
+                    <div className="field-group">
+                      <label>Hero Background Color</label>
+                      <input
+                        type="color"
+                        value={/^#[0-9a-f]{6}$/i.test(heroSettingsForm.heroOverlayColor || '') ? heroSettingsForm.heroOverlayColor : '#064e3b'}
+                        onChange={(event) => setHeroSettingsForm((prev) => ({ ...prev, heroOverlayColor: event.target.value }))}
+                      />
+                      <input
+                        type="text"
+                        value={heroSettingsForm.heroOverlayColor}
+                        onChange={(event) => setHeroSettingsForm((prev) => ({ ...prev, heroOverlayColor: event.target.value }))}
+                        placeholder="#064e3b"
+                      />
+                    </div>
+                  )}
                   <div className="create-actions">
                     <button type="button" className="primary-btn small" disabled={isSavingHero} onClick={handleHeroSettingsUpdate}>{isSavingHero ? 'Saving...' : 'Save Hero Settings'}</button>
                   </div>

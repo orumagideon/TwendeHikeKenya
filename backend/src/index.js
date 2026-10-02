@@ -531,6 +531,7 @@ app.get('/api/v1/public/settings/hero', async (_req, res) => {
     title: 'Conquer the Aberdares, Longonot & Mt. Kenya.',
     subtitle: 'Verified trail captains, licensed KWS rangers, pickup from Nairobi CBD, and seamless booking with Lipa na M-PESA.',
     badge: "KENYA'S #1 TRAIL MARKETPLACE",
+    bg_mode: 'color',
     bg_image: '',
     bg_color: '#064e3b',
   };
@@ -1293,6 +1294,7 @@ app.put('/api/v1/admin/settings/hero', authMiddleware, requireRoles('super_admin
     title: String(req.body?.title || '').trim() || 'Conquer the Aberdares, Longonot & Mt. Kenya.',
     subtitle: String(req.body?.subtitle || '').trim() || 'Verified trail captains, licensed KWS rangers, pickup from Nairobi CBD, and seamless booking with Lipa na M-PESA.',
     badge: String(req.body?.badge || '').trim() || "KENYA'S #1 TRAIL MARKETPLACE",
+    bg_mode: req.body?.bg_mode === 'image' ? 'image' : 'color',
     bg_image: String(req.body?.bg_image || '').trim(),
     bg_color: String(req.body?.bg_color || '#064e3b').trim(),
   };
